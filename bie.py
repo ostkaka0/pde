@@ -10,9 +10,9 @@
 import argparse
 parser = argparse.ArgumentParser();
 parser.add_argument(
-  "--use-np",
+  "--pytorch",
   action="store_true",
-  default=True
+  default=False
 )
 parser.add_argument(
   "-N",
@@ -25,14 +25,14 @@ parser.add_argument(
   default=800
 )
 parser.add_argument(
-  "-float",
+  "--float",
   type=int,
   default=64
 )
 args = parser.parse_args()
 
 ## Imports
-if args.use_np:
+if not args.pytorch:
   import numpy as torch
 else:
   import torch
@@ -55,6 +55,9 @@ complex_dtype = {
 }[args.float]
 print("dtypes:", dtype, ",", complex_dtype)
 
+if args.pytorch:
+  print("CPU threads used by pytorch:", torch.get_num_threads())
+
 ## Aliases
 pi = torch.pi
 abs = torch.abs # Note: Overrides built-in abs
@@ -74,7 +77,7 @@ diag = torch.diag
 def abs2(z):
   return real(z * conj(z))
 def to_complex(z):
-  if args.use_np:
+  if not args.pytorch:
     return z
   else:
     return z.to(complex_dtype)
