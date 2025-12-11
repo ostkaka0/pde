@@ -53,6 +53,7 @@ complex_dtype = {
   32: torch.complex64,
   64: torch.complex128,
 }[args.float]
+print("dtypes:", dtype, ",", complex_dtype)
 
 ## Aliases
 pi = torch.pi
@@ -66,6 +67,7 @@ real = torch.real
 imag = torch.imag
 conj = torch.conj
 log = torch.log
+log10 = torch.log10
 eye = torch.eye
 diag = torch.diag
 ## Helper functions
@@ -94,7 +96,7 @@ def kernel(s, t):
     )
 
 ## Problem specific functions
-def secret_solution(r): # u at coor r
+def secret_solution(r): # u at coord r
   return exp((r.real + 0.3*r.imag)/3) * sin((0.3*r.real - r.imag)/3)
 # Boundary-values
 def g(t):
@@ -142,7 +144,7 @@ plt.colorbar()
 plt.show()
 
 dsdt = sqrt(RPrim(t)**2 + R(t)**2)
-h = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat*diag(dsdt), g(t))
+h = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt), g(t))
 
 # Calculate u by BIE, and also we do know the correct one.
 uField = torch.zeros((M, M), dtype=dtype)
@@ -172,7 +174,7 @@ plt.axis('equal')
 plt.colorbar()
 plt.show()
 # Plot log-abs-error
-log_abs_err = log(abs(uField - uCorrect))
+log_abs_err = log10(abs(uField - uCorrect))
 plt.figure()
 plt.imshow(log_abs_err.T, origin = 'lower', cmap='CMRmap_r')
 plt.axis('equal')
