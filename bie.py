@@ -17,12 +17,12 @@ parser.add_argument(
 parser.add_argument(
   "-N",
   type=int,
-  default=300
+  default=100
 )
 parser.add_argument(
   "-M",
   type=int,
-  default=800
+  default=100
 )
 parser.add_argument(
   "--float",
@@ -73,6 +73,7 @@ log = torch.log
 log10 = torch.log10
 eye = torch.eye
 diag = torch.diag
+dot = torch.dot
 ## Helper functions
 def abs2(z):
   return real(z * conj(z))
@@ -99,11 +100,13 @@ def kernel(s, t):
     )
 
 ## Problem specific functions
-def secret_solution(r): # u at coord r
+def secret_u(r): # u at coord r
   return exp((r.real + 0.3*r.imag)/3) * sin((0.3*r.real - r.imag)/3)
+def secret_v(r): # u at coord r
+  return exp((r.real + 0.3*r.imag)/3) * cos((0.3*r.real - r.imag)/3)
 # Boundary-values
 def g(t):
-  return secret_solution(r(t))
+  return secret_u(r(t))
 # R(j) = distance from origin at time t
 def R(t):
   return 3 + cos(4*t + pi)
@@ -127,31 +130,32 @@ yVec = torch.linspace(-4, 4, M, dtype=dtype)
 X, Y = torch.meshgrid(xVec, yVec)
 Z = X + 1j*Y
 
-# Plot boundary, rPrim and nu(normals)
-plt.title("Boundary, r' and ν")
-plt.plot(r(t).real, r(t).imag)
-plt.quiver(r(t).real, r(t).imag, 1.0*rPrim(t).real, 1.0*rPrim(t).imag, width=0.002, color='r')
-plt.quiver(r(t).real, r(t).imag, 1.0*nu(t).real, 1.0*nu(t).imag, width=0.002, color='g')
-plt.show()
+# # Plot boundary, rPrim and nu(normals)
+# plt.title("Boundary, r' and ν")
+# plt.plot(r(t).real, r(t).imag)
+# plt.quiver(r(t).real, r(t).imag, 1.0*rPrim(t).real, 1.0*rPrim(t).imag, width=0.002, color='r')
+# plt.quiver(r(t).real, r(t).imag, 1.0*nu(t).real, 1.0*nu(t).imag, width=0.002, color='g')
+# plt.show()
 
 # Calculate kernel 
 kernelMat = torch.zeros((N, N))
 for i, x in enumerate(tqdm(t)):
   for j, y in enumerate(t):
     kernelMat[i, j] = kernel(t[i], t[j])
-# Plot kernel
-plt.figure()
-plt.imshow(kernelMat.T, origin = 'lower', cmap='CMRmap_r')
-plt.axis('equal')
-plt.colorbar()
-plt.show()
+# # Plot kernel
+# plt.figure()
+# plt.imshow(kernelMat.T, origin = 'lower', cmap='CMRmap_r')
+# plt.axis('equal')
+# plt.colorbar()
+# plt.show()
 
 dsdt = sqrt(RPrim(t)**2 + R(t)**2)
 h = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt), g(t))
 
+## Problem 1:
 # Calculate u by BIE, and also we do know the correct one.
-uField = torch.zeros((M, M), dtype=dtype)
-uCorrect = torch.zeros((M, M), dtype=dtype)
+u = torch.zeros((M, M), dtype=dtype)
+u_correct = torch.zeros((M, M), dtype=dtype)
 for i, x1 in enumerate(tqdm(xVec)):
   for j, x2 in enumerate(yVec):
     x = x1 + 1j*x2
@@ -161,25 +165,44 @@ for i, x1 in enumerate(tqdm(xVec)):
       numerator = real(nu(t)*conj(y - x))
       denominator = abs2(y - x)
       phi = 1/(2*pi) * numerator / denominator
-      uField[i, j] = torch.dot(phi, h * dsdt)*2*pi/N
-      uCorrect[i, j] = secret_solution(x)
+      u[i, j] = sum(phi * h * dsdt)*2*pi/N
+      u_correct[i, j] = secret_u(x)
 
 # Plot BIE-solution
 plt.figure()
-plt.imshow(uField.T, origin = 'lower', cmap='CMRmap_r', vmin=-3, vmax=3)
-plt.axis('equal')
+plt.imshow(u.T, origin = 'lower', cmap='CMRmap_r', vmin=-3, vmax=3)
 plt.colorbar()
 plt.show()
 # Plot correct solution
 plt.figure()
-plt.imshow(uCorrect.T, origin = 'lower', cmap='CMRmap_r', vmin=-3, vmax=3)
-plt.axis('equal')
+plt.imshow(u_correct.T, origin = 'lower', cmap='CMRmap_r', vmin=-3, vmax=3)
 plt.colorbar()
 plt.show()
 # Plot log-abs-error
-log_abs_err = log10(abs(uField - uCorrect))
+log_abs_err = log10(abs(u - u_correct))
 plt.figure()
 plt.imshow(log_abs_err.T, origin = 'lower', cmap='CMRmap_r')
-plt.axis('equal')
 plt.colorbar()
 plt.show()
+
+## Problem 1:
+# Calculate u by BIE, and also we do know the correct one.
+v = torch.zeros((N), dtype=dtype)
+v_correct = torch.zeros((N), dtype=dtype)
+t_odd = t + (t[1]-t[0])/2
+for i, tt1 in enumerate(tqdm(t_odd)):
+  x = r(tt1)
+  y = r(t)
+  numerator = nu(t)
+  denominator = y - x
+  phi = 1/(2*pi) * imag(numerator / denominator)
+  v[i] += sum(phi * h * dsdt)*2*pi/N
+  v_correct[i] += secret_v(x)
+
+# Plot BIE-solution
+plt.plot(t_odd, v)
+plt.plot(t_odd, v_correct, ":")
+plt.show()
+# Plot correct solution
+# Plot log-abs-error
+log_abs_err_v = log10(abs(v - v_correct))
