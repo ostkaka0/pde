@@ -205,14 +205,15 @@ for i, tt1 in enumerate(tqdm(t)):
   phi = 1/(2*pi) * imag(numerator / denominator)
   v[i] = sum(phi * h_odd * dsdt_odd)*2*pi/N
   v_correct[i] = secret_v(x)
-v += torch.mean(v_correct - v);
 plt.plot(t_odd, v)
 plt.plot(t_odd, v_correct, ":")
 plt.show()
 # Plot log-abs-error
+v2 = v + torch.mean(v_correct - v);
 log_abs_err_v = log10(abs(v - v_correct))
 plt.plot(t_odd, log_abs_err_v)
 plt.show()
+v = v2
 v = v_correct;
 
 ## Problem 3
@@ -220,8 +221,8 @@ f = g(t) + 1j*v
 
 u2 = torch.zeros((M, M), dtype=dtype)
 # dyds = 1j*nu(t)
-# dydt = rPrim(t) #dyds*dsdt
-dydt = 1j*nu(t)*dsdt;
+dydt = rPrim(t) #dyds*dsdt
+# dydt = 1j*nu(t)*dsdt;
 for i, x1 in enumerate(tqdm(xVec)):
   for j, x2 in enumerate(yVec):
     z = x1 + 1j*x2
@@ -231,7 +232,6 @@ for i, x1 in enumerate(tqdm(xVec)):
       # numerator and denumerator are two integrals, we calculate using trapezoidal rule
       numerator   = sum((f / (y-z)) * dydt) * 2*pi/N
       denominator = sum((1 / (y-z)) * dydt) * 2*pi/N # TODO: Maybe alculate analytically instead
-      print(abs(numerator), "    ", abs(denominator))
       u2[i, j] = real(numerator / denominator)
       # numerator = f(y)
       # denominator = abs2(y - x)
