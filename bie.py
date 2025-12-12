@@ -185,8 +185,7 @@ plt.imshow(log_abs_err.T, origin = 'lower', cmap='CMRmap_r')
 plt.colorbar()
 plt.show()
 
-## Problem 1:
-# Calculate u by BIE, and also we do know the correct one.
+## Problem 2:
 v = torch.zeros((N), dtype=dtype)
 v_correct = torch.zeros((N), dtype=dtype)
 t_odd = t + (t[1]-t[0])/2
@@ -199,10 +198,10 @@ for i, tt1 in enumerate(tqdm(t_odd)):
   v[i] += sum(phi * h * dsdt)*2*pi/N
   v_correct[i] += secret_v(x)
 
-# Plot BIE-solution
 plt.plot(t_odd, v)
 plt.plot(t_odd, v_correct, ":")
 plt.show()
-# Plot correct solution
 # Plot log-abs-error
 log_abs_err_v = log10(abs(v - v_correct))
+plt.plot(t_odd, log_abs_err_v)
+plt.show()
