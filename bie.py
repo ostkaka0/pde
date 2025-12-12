@@ -149,7 +149,8 @@ for i, x in enumerate(tqdm(t)):
 # plt.colorbar()
 # plt.show()
 
-dsdt = sqrt(RPrim(t)**2 + R(t)**2)
+# dsdt = sqrt(RPrim(t)**2 + R(t)**2)
+dsdt = abs(rPrim(t))
 h = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt), g(t))
 
 ## Problem 1:
@@ -189,19 +190,68 @@ plt.show()
 v = torch.zeros((N), dtype=dtype)
 v_correct = torch.zeros((N), dtype=dtype)
 t_odd = t + (t[1]-t[0])/2
-for i, tt1 in enumerate(tqdm(t_odd)):
+dsdt_odd = abs(rPrim(t_odd))
+h_odd = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt_odd), g(t_odd))
+# Calculate kernel 
+kernelMat_odd = torch.zeros((N, N))
+for i, x in enumerate(tqdm(t_odd)):
+  for j, y in enumerate(t_odd):
+    kernelMat_odd[i, j] = kernel(t_odd[i], t_odd[j])
+for i, tt1 in enumerate(tqdm(t)):
   x = r(tt1)
-  y = r(t)
-  numerator = nu(t)
+  y = r(t_odd)
+  numerator = nu(t_odd)
   denominator = y - x
   phi = 1/(2*pi) * imag(numerator / denominator)
-  v[i] += sum(phi * h * dsdt)*2*pi/N
-  v_correct[i] += secret_v(x)
-
+  v[i] = sum(phi * h_odd * dsdt_odd)*2*pi/N
+  v_correct[i] = secret_v(x)
+v += torch.mean(v_correct - v);
 plt.plot(t_odd, v)
 plt.plot(t_odd, v_correct, ":")
 plt.show()
 # Plot log-abs-error
 log_abs_err_v = log10(abs(v - v_correct))
 plt.plot(t_odd, log_abs_err_v)
+plt.show()
+v = v_correct;
+
+## Problem 3
+f = g(t) + 1j*v
+
+u2 = torch.zeros((M, M), dtype=dtype)
+# dyds = 1j*nu(t)
+# dydt = rPrim(t) #dyds*dsdt
+dydt = 1j*nu(t)*dsdt;
+for i, x1 in enumerate(tqdm(xVec)):
+  for j, x2 in enumerate(yVec):
+    z = x1 + 1j*x2
+    y = r(t)
+    tt = torch.atan2(x2, x1)
+    if x1**2+x2**2 <= R(tt)**2:
+      # numerator and denumerator are two integrals, we calculate using trapezoidal rule
+      numerator   = sum((f / (y-z)) * dydt) * 2*pi/N
+      denominator = sum((1 / (y-z)) * dydt) * 2*pi/N # TODO: Maybe alculate analytically instead
+      print(abs(numerator), "    ", abs(denominator))
+      u2[i, j] = real(numerator / denominator)
+      # numerator = f(y)
+      # denominator = abs2(y - x)
+      # phi = 1/(2*pi) * numerator / denominator
+      # u[i, j] = sum(phi * h * dsdt)*2*pi/N
+      # u_correct[i, j] = secret_u(x)
+
+# Plot BIE-solution
+plt.figure()
+plt.imshow(u2.T, origin = 'lower', cmap='CMRmap_r', vmin=-3, vmax=3)
+plt.colorbar()
+plt.show()
+# Plot correct solution
+plt.figure()
+plt.imshow(u_correct.T, origin = 'lower', cmap='CMRmap_r', vmin=-3, vmax=3)
+plt.colorbar()
+plt.show()
+# Plot log-abs-error
+log_abs_err = log10(abs(u2 - u_correct))
+plt.figure()
+plt.imshow(log_abs_err.T, origin = 'lower', cmap='CMRmap_r')
+plt.colorbar()
 plt.show()
