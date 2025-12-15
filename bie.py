@@ -45,22 +45,24 @@ M = args.M
 
 ## Imports
 import time
+np = None
 if not args.pytorch:
-  import numpy as torch
+  import numpy as np
 else:
   import torch
+  np = torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm # Progress bar
 # from scipy.special import hankel1
 
 ## Set correct dtype
 dtype = {
-  32: torch.float32,
-  64: torch.float64,
+  32: np.float32,
+  64: np.float64,
 }[args.float]
 complex_dtype = {
-  32: torch.complex64,
-  64: torch.complex128,
+  32: np.complex64,
+  64: np.complex128,
 }[args.float]
 print("dtypes:", dtype, ",", complex_dtype)
 
@@ -69,21 +71,21 @@ if args.pytorch:
   print("CPU threads used by pytorch:", torch.get_num_threads())
 
 ## Aliases
-pi = torch.pi
-abs = torch.abs # Note: Overrides built-in abs
-pow = torch.pow
-exp = torch.exp
-cos = torch.cos
-sin = torch.sin
-sqrt = torch.sqrt
-real = torch.real
-imag = torch.imag
-conj = torch.conj
-log = torch.log
-log10 = torch.log10
-eye = torch.eye
-diag = torch.diag
-dot = torch.dot
+pi = np.pi
+abs = np.abs # Note: Overrides built-in abs
+pow = np.pow
+exp = np.exp
+cos = np.cos
+sin = np.sin
+sqrt = np.sqrt
+real = np.real
+imag = np.imag
+conj = np.conj
+log = np.log
+log10 = np.log10
+eye = np.eye
+diag = np.diag
+dot = np.dot
 
 ## Helper functions
 def abs2(z):
@@ -123,21 +125,21 @@ def calcKernelMat(t):
   diag = kernel_diagonal(t)
 
   # Insert the diagonals
-  idcs = torch.arange(len(t))
+  idcs = np.arange(len(t))
   mat[idcs, idcs] = diag
 
   return mat
 
 def calcKernelMatSlow(t):
-  mat = torch.zeros((N, N))
+  mat = np.zeros((N, N))
   for i, x in enumerate(tqdm(t)):
     for j, y in enumerate(t):
       mat[i, j] = kernel_element(t[i], t[j])
   return mat
 
 def mask(z):
-  tt = torch.atan2(imag(z), real(z))
-  return torch.where(abs2(z) <= R(tt)**2, 1, 0)
+  tt = np.atan2(imag(z), real(z))
+  return np.where(abs2(z) <= R(tt)**2, 1, 0)
 
 
 
@@ -146,13 +148,13 @@ def solve_u(M, t, bounds):
   N = len(t)
   # dsdt = sqrt(RPrim(t)**2 + R(t)**2)
   dsdt = abs(rPrim(t))
-  h = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt), g(t))
+  h = np.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt), g(t))
 
-  x1 = torch.linspace(*bounds[0], M, dtype=dtype)[:, None]
-  x2 = torch.linspace(*bounds[1], M, dtype=dtype)[None, :]
+  x1 = np.linspace(*bounds[0], M, dtype=dtype)[:, None]
+  x2 = np.linspace(*bounds[1], M, dtype=dtype)[None, :]
   x = x1 + 1j*x2
   
-  u = torch.zeros((M, M), dtype=dtype)
+  u = np.zeros((M, M), dtype=dtype)
   
   for i, t_i in enumerate(tqdm(t)):
     y = r(t_i)
@@ -164,8 +166,8 @@ def solve_u(M, t, bounds):
   return mask(x) * u
 
 def correct_u(M, bounds):
-  x1 = torch.linspace(*bounds[0], M, dtype=dtype)[:, None]
-  x2 = torch.linspace(*bounds[1], M, dtype=dtype)[None, :]
+  x1 = np.linspace(*bounds[0], M, dtype=dtype)[:, None]
+  x2 = np.linspace(*bounds[1], M, dtype=dtype)[None, :]
   x = x1 + 1j*x2
   u = secret_u(x)
   return mask(x) * u
@@ -174,10 +176,10 @@ def solve_boundary_v(t, t_odd):
   N = len(t)
   dsdt_odd = abs(rPrim(t_odd))
   kernelMat_odd = calcKernelMat(t_odd) 
-  h_odd = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat_odd@diag(dsdt_odd), g(t_odd))
+  h_odd = np.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat_odd@diag(dsdt_odd), g(t_odd))
 
   x = r(t)
-  v = torch.zeros((N))
+  v = np.zeros((N))
   for i, t_odd_i in enumerate(t_odd):
     y = r(t_odd_i)
     numerator = nu(t_odd_i)
@@ -189,11 +191,10 @@ def solve_boundary_v(t, t_odd):
 def plot_boundary_v_integrand(t, t_odd):
   dsdt_odd = abs(rPrim(t_odd))
   kernelMat_odd = calcKernelMat(t_odd) 
-  h_odd = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat_odd@diag(dsdt_odd), g(t_odd))
+  h_odd = np.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat_odd@diag(dsdt_odd), g(t_odd))
   
-
   x = r(t)
-  v = torch.zeros((N, N))
+  v = np.zeros((N, N))
   for i, t_odd_i in enumerate(t_odd):
     y = r(t_odd_i)
     numerator = nu(t_odd)
@@ -209,13 +210,12 @@ def solve_u_better(M, t, v, bounds):
   y = r(t)
   dydt = rPrim(t)
 
-  x1 = torch.linspace(*bounds[0], M, dtype=dtype)[:, None]
-  x2 = torch.linspace(*bounds[1], M, dtype=dtype)[None, :]
+  x1 = np.linspace(*bounds[0], M, dtype=dtype)[:, None]
+  x2 = np.linspace(*bounds[1], M, dtype=dtype)[None, :]
   z = x1 + 1j*x2
   
-  
-  numerator = torch.zeros((M, M), dtype=complex_dtype)
-  denominator = torch.zeros((M, M), dtype=complex_dtype)
+  numerator = np.zeros((M, M), dtype=complex_dtype)
+  denominator = np.zeros((M, M), dtype=complex_dtype)
   for i, t_i in enumerate(tqdm(t)):
     numerator   += (f[i] / (y[i]-z)) * dydt[i] * 2*pi/N
     denominator += (1    / (y[i]-z)) * dydt[i] * 2*pi/N
@@ -258,8 +258,7 @@ def rBis(t):
   return (RBis(t) + 2j*RPrim(t) - R(t)) * exp(1j * to_complex(t))
 
 ### Excersises
-
-t = torch.linspace(-pi + 2*pi/N, pi, N, dtype=dtype)
+t = np.linspace(-pi + 2*pi/N, pi, N, dtype=dtype)
 t_odd = t + (t[1]-t[0])/2 # Assumes equal spacing between t-values
 bounds = ((-4, 4), (-4, 4))
 
@@ -289,7 +288,7 @@ if args.q == 2 or args.q == 0:
   plt.plot(t, v_correct, ":")
   plt.show()
   # Plot log-abs-error
-  log_abs_err_v = log10(abs(v - v_correct + torch.mean(v_correct) - torch.mean(v)))
+  log_abs_err_v = log10(abs(v - v_correct + np.mean(v_correct) - np.mean(v)))
   plt.plot(t_odd, log_abs_err_v)
   plt.show()
 
