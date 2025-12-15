@@ -1,3 +1,4 @@
+#!/usr/bin/python
 # File created 2025-12-09 15:19:32 CET
 
 # h - density
@@ -32,6 +33,7 @@ parser.add_argument(
 args = parser.parse_args()
 
 ## Imports
+import time
 if not args.pytorch:
   import numpy as torch
 else:
@@ -56,6 +58,7 @@ complex_dtype = {
 print("dtypes:", dtype, ",", complex_dtype)
 
 if args.pytorch:
+  print("Using pytorch")
   print("CPU threads used by pytorch:", torch.get_num_threads())
 
 ## Aliases
@@ -87,17 +90,43 @@ def to_complex(z):
 # Normal
 def nu(t):
   return -1j * rPrim(t) / abs(rPrim(t))
-def kernel(s, t):
+
+def kernel_non_diagonal(s, t):
   x = r(s)
   y = r(t)
-  if x != y:
-    return 1/(2*pi) * real((y-x)*conj(nu(t))) / abs(y-x)**2
+  return 1/(2*pi) * real((y-x)*conj(nu(t))) / abs(y-x)**2
+
+def kernel_diagonal(t):
+  return (
+    1 / (4*pi)
+    * (-RBis(t) * R(t)  + 2*RPrim(t)**2  + R(t)**2)
+    / pow(RPrim(t)**2 + R(t)**2, 3/2)
+  )
+
+def kernel_element(s, t):
+  if s != t:
+    return kernel_non_diagonal(s, t);
   else:
-    return (
-      +1 / (4*pi)
-      * (-RBis(t) * R(t)  + 2*RPrim(t)**2  + R(t)**2)
-      / pow(RPrim(t)**2 + R(t)**2, 3/2)
-    )
+    return kernel_diagonal(t);
+
+def calcKernelMat(t):
+  s = t[:, None]
+  mat = kernel_non_diagonal(s, t)
+  diag = kernel_diagonal(t)
+
+  # Insert the diagonals
+  idcs = torch.arange(len(t))
+  mat[idcs, idcs] = diag
+
+  return mat
+
+def calcKernelMatSlow(t):
+  mat = torch.zeros((N, N))
+  for i, x in enumerate(tqdm(t)):
+    for j, y in enumerate(t):
+      mat[i, j] = kernel_element(t[i], t[j])
+  return mat
+
 
 ## Problem specific functions
 def secret_u(r): # u at coord r
@@ -122,11 +151,97 @@ def rPrim(t):
 def rBis(t):
   return (RBis(t) + 2j*RPrim(t) - R(t)) * exp(1j * to_complex(t))
 
+## BIE-algorithms
+def solve_u(M, t, bounds):
+  N = len(t)
+  # dsdt = sqrt(RPrim(t)**2 + R(t)**2)
+  dsdt = abs(rPrim(t))
+  print("Solving for h...")
+  h = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt), g(t))
+  print("Solving u...")
+
+  xVec = torch.linspace(*bounds[0], M, dtype=dtype)
+  yVec = torch.linspace(*bounds[1], M, dtype=dtype)
+  u = torch.zeros((M, M), dtype=dtype)
+  u_correct = torch.zeros((M, M), dtype=dtype)
+  for i, x1 in enumerate(tqdm(xVec)):
+    for j, x2 in enumerate(yVec):
+      x = x1 + 1j*x2
+      y = r(t)
+      tt = torch.atan2(x2, x1)
+      if x1**2+x2**2 <= R(tt)**2:
+        numerator = real(nu(t)*conj(y - x))
+        denominator = abs2(y - x)
+        phi = 1/(2*pi) * numerator / denominator
+        u[i, j] = sum(phi * h * dsdt)*2*pi/N
+        u_correct[i, j] = secret_u(x)
+  return u
+
+def correct_u(M, bounds):
+  xVec = torch.linspace(*bounds[0], M, dtype=dtype)
+  yVec = torch.linspace(*bounds[1], M, dtype=dtype)
+  u_correct = torch.zeros((M, M), dtype=dtype)
+  for i, x1 in enumerate(tqdm(xVec)):
+    for j, x2 in enumerate(yVec):
+      x = x1 + 1j*x2
+      tt = torch.atan2(x2, x1)
+      if x1**2+x2**2 <= R(tt)**2:
+        u_correct[i, j] = secret_u(x)
+  return u_correct
+  
+def solve_boundary_v(t, t_odd):
+  v = torch.zeros((N), dtype=dtype)
+  v_correct = torch.zeros((N), dtype=dtype)
+  
+  dsdt_odd = abs(rPrim(t_odd))
+  h_odd = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt_odd), g(t_odd))
+  kernelMat_odd = calcKernelMat(t_odd) 
+  for i, tt1 in enumerate(tqdm(t)):
+    x = r(tt1)
+    y = r(t_odd)
+    numerator = nu(t_odd)
+    denominator = y - x
+    phi = 1/(2*pi) * imag(numerator / denominator)
+    v[i] = sum(phi * h_odd * dsdt_odd)*2*pi/N
+  return v
+
+def solve_u_better():
+  f = g(t) + 1j*v
+
+  u = torch.zeros((M, M), dtype=dtype)
+  dydt = rPrim(t)
+  # dyds = 1j*nu(t)
+  # dydt = 1j*nu(t)*dsdt;
+  # dydt = dyds*dsdt;
+  for i, x1 in enumerate(tqdm(xVec)):
+    for j, x2 in enumerate(yVec):
+      z = x1 + 1j*x2
+      y = r(t)
+      tt = torch.atan2(x2, x1)
+      if x1**2+x2**2 <= R(tt)**2:
+        # numerator and denumerator are two integrals, we calculate using trapezoidal rule
+        numerator   = sum((f / (y-z)) * dydt) * 2*pi/N
+        denominator = sum((1 / (y-z)) * dydt) * 2*pi/N
+        u[i, j] = real(numerator / denominator)
+  return u
+
+def correct_boundary_v(t):
+  x = r(t)
+  return secret_v(x)
+
+## Plotting functions
+def plot_mat_and_show(mat):
+  plt.imshow(mat.T, origin = 'lower', cmap='CMRmap_r')
+  plt.axis('equal')
+  plt.colorbar()
+  plt.show()
+
 ## BIE
 # Common linspaces and meshgrids:
 t = torch.linspace(-pi + 2*pi/N, pi, N, dtype=dtype)
 xVec = torch.linspace(-4, 4, M, dtype=dtype)
 yVec = torch.linspace(-4, 4, M, dtype=dtype)
+
 X, Y = torch.meshgrid(xVec, yVec)
 Z = X + 1j*Y
 
@@ -137,76 +252,28 @@ Z = X + 1j*Y
 # plt.quiver(r(t).real, r(t).imag, 1.0*nu(t).real, 1.0*nu(t).imag, width=0.002, color='g')
 # plt.show()
 
-# Calculate kernel 
-kernelMat = torch.zeros((N, N))
-for i, x in enumerate(tqdm(t)):
-  for j, y in enumerate(t):
-    kernelMat[i, j] = kernel(t[i], t[j])
-# # Plot kernel
-# plt.figure()
-# plt.imshow(kernelMat.T, origin = 'lower', cmap='CMRmap_r')
-# plt.axis('equal')
-# plt.colorbar()
-# plt.show()
+print("Calculating kernel...")
+kernelMat = calcKernelMat(t);
+plot_mat_and_show(kernelMat)
 
-# dsdt = sqrt(RPrim(t)**2 + R(t)**2)
-dsdt = abs(rPrim(t))
-h = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt), g(t))
+
 
 ## Problem 1:
-# Calculate u by BIE, and also we do know the correct one.
-u = torch.zeros((M, M), dtype=dtype)
-u_correct = torch.zeros((M, M), dtype=dtype)
-for i, x1 in enumerate(tqdm(xVec)):
-  for j, x2 in enumerate(yVec):
-    x = x1 + 1j*x2
-    y = r(t)
-    tt = torch.atan2(x2, x1)
-    if x1**2+x2**2 <= R(tt)**2:
-      numerator = real(nu(t)*conj(y - x))
-      denominator = abs2(y - x)
-      phi = 1/(2*pi) * numerator / denominator
-      u[i, j] = sum(phi * h * dsdt)*2*pi/N
-      u_correct[i, j] = secret_u(x)
-
-# Plot BIE-solution
-plt.figure()
-plt.imshow(u.T, origin = 'lower', cmap='CMRmap_r', vmin=-3, vmax=3)
-plt.colorbar()
-plt.show()
-# Plot correct solution
-plt.figure()
-plt.imshow(u_correct.T, origin = 'lower', cmap='CMRmap_r', vmin=-3, vmax=3)
-plt.colorbar()
-plt.show()
-# Plot log-abs-error
+bounds = ((-4, 4), (-4, 4))
+print("Solving u...")
+u = solve_u(M, t, bounds)
+u_correct = correct_u(M, bounds)
+plot_mat_and_show(u)
+plot_mat_and_show(u_correct)
 log_abs_err = log10(abs(u - u_correct))
-plt.figure()
-plt.imshow(log_abs_err.T, origin = 'lower', cmap='CMRmap_r')
-plt.colorbar()
-plt.show()
+plot_mat_and_show(log_abs_err)
 
 ## Problem 2:
-v = torch.zeros((N), dtype=dtype)
-v_correct = torch.zeros((N), dtype=dtype)
-t_odd = t + (t[1]-t[0])/2
-dsdt_odd = abs(rPrim(t_odd))
-h_odd = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt_odd), g(t_odd))
-# Calculate kernel 
-kernelMat_odd = torch.zeros((N, N))
-for i, x in enumerate(tqdm(t_odd)):
-  for j, y in enumerate(t_odd):
-    kernelMat_odd[i, j] = kernel(t_odd[i], t_odd[j])
-for i, tt1 in enumerate(tqdm(t)):
-  x = r(tt1)
-  y = r(t_odd)
-  numerator = nu(t_odd)
-  denominator = y - x
-  phi = 1/(2*pi) * imag(numerator / denominator)
-  v[i] = sum(phi * h_odd * dsdt_odd)*2*pi/N
-  v_correct[i] = secret_v(x)
-plt.plot(t_odd, v)
-plt.plot(t_odd, v_correct, ":")
+t_odd = t + (t[1]-t[0])/2 # Assumes equal spacing between t-values
+v = solve_boundary_v(t, t_odd)
+v_correct = correct_boundary_v(t)
+plt.plot(t, v)
+plt.plot(t, v_correct, ":")
 plt.show()
 # Plot log-abs-error
 v2 = v + torch.mean(v_correct - v);
@@ -217,27 +284,7 @@ v = v2
 v = v_correct;
 
 ## Problem 3
-f = g(t) + 1j*v
-
-u2 = torch.zeros((M, M), dtype=dtype)
-# dyds = 1j*nu(t)
-dydt = rPrim(t) #dyds*dsdt
-# dydt = 1j*nu(t)*dsdt;
-for i, x1 in enumerate(tqdm(xVec)):
-  for j, x2 in enumerate(yVec):
-    z = x1 + 1j*x2
-    y = r(t)
-    tt = torch.atan2(x2, x1)
-    if x1**2+x2**2 <= R(tt)**2:
-      # numerator and denumerator are two integrals, we calculate using trapezoidal rule
-      numerator   = sum((f / (y-z)) * dydt) * 2*pi/N
-      denominator = sum((1 / (y-z)) * dydt) * 2*pi/N # TODO: Maybe alculate analytically instead
-      u2[i, j] = real(numerator / denominator)
-      # numerator = f(y)
-      # denominator = abs2(y - x)
-      # phi = 1/(2*pi) * numerator / denominator
-      # u[i, j] = sum(phi * h * dsdt)*2*pi/N
-      # u_correct[i, j] = secret_u(x)
+u2 = solve_u_better()
 
 # Plot BIE-solution
 plt.figure()
