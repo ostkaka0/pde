@@ -44,7 +44,6 @@ N = args.N
 M = args.M
 
 ## Imports
-import time
 np = None
 if not args.pytorch:
   import numpy as np
@@ -57,7 +56,6 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm # Progress bar
 
 ## Set correct dtype
-
 dtype = {
   32: np.float32,
   64: np.float64,
@@ -109,20 +107,12 @@ def kernel_non_diagonal(s, t):
   x = r(s)
   y = r(t)
   return 1/(2*pi) * real((y-x)*conj(nu(t))) / abs2(y-x)
-
 def kernel_diagonal(t):
   return (
     1 / (4*pi)
     * (-RBis(t) * R(t)  + 2*RPrim(t)**2  + R(t)**2)
     / pow(RPrim(t)**2 + R(t)**2, 3/2)
   )
-
-def kernel_element(s, t):
-  if s != t:
-    return kernel_non_diagonal(s, t);
-  else:
-    return kernel_diagonal(t);
-
 def calcKernelMat(t):
   s = t[:, None]
   mat = kernel_non_diagonal(s, t)
@@ -192,16 +182,16 @@ def solve_u_better(M, t, v, bounds):
 
   x1 = np.linspace(*bounds[0], M, dtype=dtype)[:, None]
   x2 = np.linspace(*bounds[1], M, dtype=dtype)[None, :]
-  z = x1 + 1j*x2
+  x = x1 + 1j*x2
   
   numerator = np.zeros((M, M), dtype=complex_dtype)
   denominator = np.zeros((M, M), dtype=complex_dtype)
   for i, t_i in enumerate(tqdm(t)):
-    numerator   += (f[i] / (y[i]-z)) * dydt[i] * 2*pi/N
-    denominator += (1    / (y[i]-z)) * dydt[i] * 2*pi/N
+    numerator   += (f[i] / (y[i]-x)) * dydt[i] * 2*pi/N
+    denominator += (1    / (y[i]-x)) * dydt[i] * 2*pi/N
   u = real(numerator / denominator)
 
-  return mask(z) * u
+  return mask(x) * u
 
 def correct_boundary_v(t):
   x = r(t)
@@ -277,5 +267,5 @@ if args.q == 3 or args.q == 0:
   u_correct = correct_u(M, bounds)
   plot_mat_and_show(u, -3, 3)
   plot_mat_and_show(u_correct, -3, 3)
-  log_abs_err2 = log10(abs(u - u_correct))
-  plot_mat_and_show(log_abs_err2)
+  log_abs_err = log10(abs(u - u_correct))
+  plot_mat_and_show(log_abs_err)
