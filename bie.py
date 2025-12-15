@@ -48,21 +48,25 @@ import time
 np = None
 if not args.pytorch:
   import numpy as np
+  from scipy import linalg
 else:
   import torch
+  from torch import linalg
   np = torch
 import matplotlib.pyplot as plt
 from tqdm import tqdm # Progress bar
-# from scipy.special import hankel1
 
 ## Set correct dtype
+
 dtype = {
   32: np.float32,
   64: np.float64,
+  128: np.float128 if not args.pytorch else None
 }[args.float]
 complex_dtype = {
   32: np.complex64,
   64: np.complex128,
+  128: np.complex256 if not args.pytorch else None
 }[args.float]
 print("dtypes:", dtype, ",", complex_dtype)
 
@@ -104,7 +108,7 @@ def nu(t):
 def kernel_non_diagonal(s, t):
   x = r(s)
   y = r(t)
-  return 1/(2*pi) * real((y-x)*conj(nu(t))) / abs(y-x)**2
+  return 1/(2*pi) * real((y-x)*conj(nu(t))) / abs2(y-x)
 
 def kernel_diagonal(t):
   return (
@@ -130,25 +134,16 @@ def calcKernelMat(t):
 
   return mat
 
-def calcKernelMatSlow(t):
-  mat = np.zeros((N, N))
-  for i, x in enumerate(tqdm(t)):
-    for j, y in enumerate(t):
-      mat[i, j] = kernel_element(t[i], t[j])
-  return mat
-
 def mask(z):
   tt = np.atan2(imag(z), real(z))
   return np.where(abs2(z) <= R(tt)**2, 1, 0)
-
-
 
 ## BIE-algorithms
 def solve_u(M, t, bounds):
   N = len(t)
   # dsdt = sqrt(RPrim(t)**2 + R(t)**2)
   dsdt = abs(rPrim(t))
-  h = np.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt), g(t))
+  h = linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt), g(t))
 
   x1 = np.linspace(*bounds[0], M, dtype=dtype)[:, None]
   x2 = np.linspace(*bounds[1], M, dtype=dtype)[None, :]
@@ -176,7 +171,7 @@ def solve_boundary_v(t, t_odd):
   N = len(t)
   dsdt_odd = abs(rPrim(t_odd))
   kernelMat_odd = calcKernelMat(t_odd) 
-  h_odd = np.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat_odd@diag(dsdt_odd), g(t_odd))
+  h_odd = linalg.solve(eye(N)/2 + 2*pi/N * kernelMat_odd @ diag(dsdt_odd), g(t_odd))
 
   x = r(t)
   v = np.zeros((N))
@@ -185,13 +180,13 @@ def solve_boundary_v(t, t_odd):
     numerator = nu(t_odd_i)
     denominator = y - x
     phi = 1/(2*pi) * imag(numerator / denominator)
-    v += phi * h_odd[i] * dsdt_odd[i] *2*pi/N
+    v += phi * h_odd[i] * dsdt_odd[i] * 2*pi/N
   return v
 
 def plot_boundary_v_integrand(t, t_odd):
   dsdt_odd = abs(rPrim(t_odd))
   kernelMat_odd = calcKernelMat(t_odd) 
-  h_odd = np.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat_odd@diag(dsdt_odd), g(t_odd))
+  h_odd = linalg.solve(eye(N)/2 + 2*pi/N * kernelMat_odd @ diag(dsdt_odd), g(t_odd))
   
   x = r(t)
   v = np.zeros((N, N))
@@ -200,7 +195,7 @@ def plot_boundary_v_integrand(t, t_odd):
     numerator = nu(t_odd)
     denominator = y - x
     phi = 1/(2*pi) * imag(numerator / denominator)
-    v[i] = phi * h_odd[i] * dsdt_odd[i] *2*pi/N
+    v[i] = phi * h_odd[i] * dsdt_odd[i] * 2*pi/N
   plot_mat_and_show(v)
 
 def solve_u_better(M, t, v, bounds):
