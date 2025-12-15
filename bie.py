@@ -183,21 +183,6 @@ def solve_boundary_v(t, t_odd):
     v += phi * h_odd[i] * dsdt_odd[i] * 2*pi/N
   return v
 
-def plot_boundary_v_integrand(t, t_odd):
-  dsdt_odd = abs(rPrim(t_odd))
-  kernelMat_odd = calcKernelMat(t_odd) 
-  h_odd = linalg.solve(eye(N)/2 + 2*pi/N * kernelMat_odd @ diag(dsdt_odd), g(t_odd))
-  
-  x = r(t)
-  v = np.zeros((N, N))
-  for i, t_odd_i in enumerate(t_odd):
-    y = r(t_odd_i)
-    numerator = nu(t_odd)
-    denominator = y - x
-    phi = 1/(2*pi) * imag(numerator / denominator)
-    v[i] = phi * h_odd[i] * dsdt_odd[i] * 2*pi/N
-  plot_mat_and_show(v)
-
 def solve_u_better(M, t, v, bounds):
   N = len(t)
   f = g(t) + 1j*v
@@ -278,7 +263,6 @@ if args.cheat:
   v = v_correct;
 
 if args.q == 2 or args.q == 0:
-  plot_boundary_v_integrand(t, t_odd)
   plt.plot(t, v)
   plt.plot(t, v_correct, ":")
   plt.show()
