@@ -127,6 +127,9 @@ def calcKernelMatSlow(t):
       mat[i, j] = kernel_element(t[i], t[j])
   return mat
 
+def mask(z):
+  tt = torch.atan2(imag(z), real(z))
+  return torch.where(abs2(z) <= R(tt)**2, 1, 0)
 
 ## Problem specific functions
 def secret_u(r): # u at coord r
@@ -156,82 +159,90 @@ def solve_u(M, t, bounds):
   N = len(t)
   # dsdt = sqrt(RPrim(t)**2 + R(t)**2)
   dsdt = abs(rPrim(t))
-  print("Solving for h...")
   h = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt), g(t))
-  print("Solving u...")
 
-  xVec = torch.linspace(*bounds[0], M, dtype=dtype)
-  yVec = torch.linspace(*bounds[1], M, dtype=dtype)
+  x1 = torch.linspace(*bounds[0], M, dtype=dtype)[:, None]
+  x2 = torch.linspace(*bounds[1], M, dtype=dtype)[None, :]
+  x = x1 + 1j*x2
+  
   u = torch.zeros((M, M), dtype=dtype)
-  u_correct = torch.zeros((M, M), dtype=dtype)
-  for i, x1 in enumerate(tqdm(xVec)):
-    for j, x2 in enumerate(yVec):
-      x = x1 + 1j*x2
-      y = r(t)
-      tt = torch.atan2(x2, x1)
-      if x1**2+x2**2 <= R(tt)**2:
-        numerator = real(nu(t)*conj(y - x))
-        denominator = abs2(y - x)
-        phi = 1/(2*pi) * numerator / denominator
-        u[i, j] = sum(phi * h * dsdt)*2*pi/N
-        u_correct[i, j] = secret_u(x)
-  return u
+  
+  for i, t_i in enumerate(tqdm(t)):
+    y = r(t_i)
+    numerator = real(nu(t_i)*conj(y - x))
+    denominator = abs2(y - x)
+    phi = 1/(2*pi) * numerator / denominator
+    u += phi * h[i] * dsdt[i] * 2*pi/N
+
+  return mask(x) * u
 
 def correct_u(M, bounds):
-  xVec = torch.linspace(*bounds[0], M, dtype=dtype)
-  yVec = torch.linspace(*bounds[1], M, dtype=dtype)
-  u_correct = torch.zeros((M, M), dtype=dtype)
-  for i, x1 in enumerate(tqdm(xVec)):
-    for j, x2 in enumerate(yVec):
-      x = x1 + 1j*x2
-      tt = torch.atan2(x2, x1)
-      if x1**2+x2**2 <= R(tt)**2:
-        u_correct[i, j] = secret_u(x)
-  return u_correct
+  x1 = torch.linspace(*bounds[0], M, dtype=dtype)[:, None]
+  x2 = torch.linspace(*bounds[1], M, dtype=dtype)[None, :]
+  x = x1 + 1j*x2
+  u = secret_u(x)
+  return mask(x) * u
   
 def solve_boundary_v(t, t_odd):
-  v = torch.zeros((N), dtype=dtype)
-  v_correct = torch.zeros((N), dtype=dtype)
-  
   dsdt_odd = abs(rPrim(t_odd))
   h_odd = torch.linalg.solve(eye(N)/2 + 2*pi/N*kernelMat@diag(dsdt_odd), g(t_odd))
   kernelMat_odd = calcKernelMat(t_odd) 
-  for i, tt1 in enumerate(tqdm(t)):
-    x = r(tt1)
-    y = r(t_odd)
-    numerator = nu(t_odd)
-    denominator = y - x
-    phi = 1/(2*pi) * imag(numerator / denominator)
-    v[i] = sum(phi * h_odd * dsdt_odd)*2*pi/N
+
+  x = r(t)[:, None]
+  y = r(t_odd)
+  numerator = nu(t_odd)
+  denominator = y - x
+  phi = 1/(2*pi) * imag(numerator / denominator)
+  v = torch.sum(phi * h_odd * dsdt_odd, axis=-1)*2*pi/N
   return v
 
-def solve_u_better():
+def solve_u_better(M, t, v, bounds):
+  N = len(t)
   f = g(t) + 1j*v
 
-  u = torch.zeros((M, M), dtype=dtype)
+  y = r(t)
   dydt = rPrim(t)
-  # dyds = 1j*nu(t)
-  # dydt = 1j*nu(t)*dsdt;
-  # dydt = dyds*dsdt;
-  for i, x1 in enumerate(tqdm(xVec)):
-    for j, x2 in enumerate(yVec):
-      z = x1 + 1j*x2
-      y = r(t)
-      tt = torch.atan2(x2, x1)
-      if x1**2+x2**2 <= R(tt)**2:
-        # numerator and denumerator are two integrals, we calculate using trapezoidal rule
-        numerator   = sum((f / (y-z)) * dydt) * 2*pi/N
-        denominator = sum((1 / (y-z)) * dydt) * 2*pi/N
-        u[i, j] = real(numerator / denominator)
-  return u
+
+  x1 = torch.linspace(*bounds[0], M, dtype=dtype)[:, None]
+  x2 = torch.linspace(*bounds[1], M, dtype=dtype)[None, :]
+  z = x1 + 1j*x2
+  
+  
+  numerator = torch.zeros((M, M), dtype=complex_dtype)
+  denominator = torch.zeros((M, M), dtype=complex_dtype)
+  for i, t_i in enumerate(tqdm(t)):
+    numerator   += (f[i] / (y[i]-z)) * dydt[i] * 2*pi/N
+    denominator += (1    / (y[i]-z)) * dydt[i] * 2*pi/N
+  u = real(numerator / denominator)
+
+  return mask(z) * u
+# def solve_u_better():
+#   f = g(t) + 1j*v
+
+#   u = torch.zeros((M, M), dtype=dtype)
+#   dydt = rPrim(t)
+#   # dyds = 1j*nu(t)
+#   # dydt = 1j*nu(t)*dsdt;
+#   # dydt = dyds*dsdt;
+#   for i, x1 in enumerate(tqdm(xVec)):
+#     for j, x2 in enumerate(yVec):
+#       z = x1 + 1j*x2
+#       y = r(t)
+#       tt = torch.atan2(x2, x1)
+#       if x1**2+x2**2 <= R(tt)**2:
+#         # numerator and denumerator are two integrals, we calculate using trapezoidal rule
+#         numerator   = torch.sum((f / (y-z)) * dydt) * 2*pi/N
+#         denominator = torch.sum((1 / (y-z)) * dydt) * 2*pi/N
+#         u[i, j] = real(numerator / denominator)
+#   return u
 
 def correct_boundary_v(t):
   x = r(t)
   return secret_v(x)
 
 ## Plotting functions
-def plot_mat_and_show(mat):
-  plt.imshow(mat.T, origin = 'lower', cmap='CMRmap_r')
+def plot_mat_and_show(mat, vmin=None, vmax=None):
+  plt.imshow(mat.T, origin = 'lower', cmap='CMRmap_r', vmin=vmin, vmax=vmax)
   plt.axis('equal')
   plt.colorbar()
   plt.show()
@@ -263,8 +274,8 @@ bounds = ((-4, 4), (-4, 4))
 print("Solving u...")
 u = solve_u(M, t, bounds)
 u_correct = correct_u(M, bounds)
-plot_mat_and_show(u)
-plot_mat_and_show(u_correct)
+plot_mat_and_show(u, -3, 3)
+plot_mat_and_show(u_correct, -3, 3)
 log_abs_err = log10(abs(u - u_correct))
 plot_mat_and_show(log_abs_err)
 
@@ -284,7 +295,7 @@ v = v2
 v = v_correct;
 
 ## Problem 3
-u2 = solve_u_better()
+u2 = solve_u_better(M, t, v, bounds)
 
 # Plot BIE-solution
 plt.figure()
