@@ -216,25 +216,6 @@ def solve_u_better(M, t, v, bounds):
   u = real(numerator / denominator)
 
   return mask(z) * u
-# def solve_u_better():
-#   f = g(t) + 1j*v
-
-#   u = torch.zeros((M, M), dtype=dtype)
-#   dydt = rPrim(t)
-#   # dyds = 1j*nu(t)
-#   # dydt = 1j*nu(t)*dsdt;
-#   # dydt = dyds*dsdt;
-#   for i, x1 in enumerate(tqdm(xVec)):
-#     for j, x2 in enumerate(yVec):
-#       z = x1 + 1j*x2
-#       y = r(t)
-#       tt = torch.atan2(x2, x1)
-#       if x1**2+x2**2 <= R(tt)**2:
-#         # numerator and denumerator are two integrals, we calculate using trapezoidal rule
-#         numerator   = torch.sum((f / (y-z)) * dydt) * 2*pi/N
-#         denominator = torch.sum((1 / (y-z)) * dydt) * 2*pi/N
-#         u[i, j] = real(numerator / denominator)
-#   return u
 
 def correct_boundary_v(t):
   x = r(t)
@@ -256,18 +237,9 @@ yVec = torch.linspace(-4, 4, M, dtype=dtype)
 X, Y = torch.meshgrid(xVec, yVec)
 Z = X + 1j*Y
 
-# # Plot boundary, rPrim and nu(normals)
-# plt.title("Boundary, r' and ν")
-# plt.plot(r(t).real, r(t).imag)
-# plt.quiver(r(t).real, r(t).imag, 1.0*rPrim(t).real, 1.0*rPrim(t).imag, width=0.002, color='r')
-# plt.quiver(r(t).real, r(t).imag, 1.0*nu(t).real, 1.0*nu(t).imag, width=0.002, color='g')
-# plt.show()
-
 print("Calculating kernel...")
 kernelMat = calcKernelMat(t);
 plot_mat_and_show(kernelMat)
-
-
 
 ## Problem 1:
 bounds = ((-4, 4), (-4, 4))
