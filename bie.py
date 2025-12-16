@@ -125,8 +125,8 @@ def calcKernelMat(t):
   return mat
 
 def mask(z):
-  tt = np.atan2(imag(z), real(z))
-  return np.where(abs2(z) <= R(tt)**2, 1, 0)
+  t = np.atan2(imag(z), real(z))
+  return np.where(abs2(z) <= R(t)**2, 1, 0)
 
 ## BIE-algorithms
 def solve_u(M, t, bounds):
