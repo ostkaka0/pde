@@ -118,7 +118,6 @@ def abs_vec(x):
 
 ## Helper functions
 def abs2_vec(x):
-  print("abs2_vec, shape of x:", np.shape(x))
   return x[0]**2 + x[1]**2
   # return real(z * conj(z))
 def to_complex(z):
@@ -129,7 +128,6 @@ def to_complex(z):
   #   return z.to(complex_dtype)
 
 def c2v(z):
-  print("z shape:", np.shape(z))
   return np.stack((z.real, z.imag))
 
 ## Functions not specific to our problem
@@ -145,20 +143,28 @@ def nu(t):
 
 # TODO: def phi(x):
 
-# The outgoing fundamental solution to the Helmholtz operator in 2 dimensions
-def phi_k(x):
-  -1j/2 * special.hankel1(0, k * abs_vec(x))
-def grad_phi_k(x):
-  return 1j/4 * k*(x)/abs_vec(x) * special.hankel1(1, k*abs_vec(x))
+if args.helm: # phi_k
+  def phi(x):
+    return -1j/4 * special.hankel1(0, k * abs_vec(x))
+else: # regular phi
+  def phi(x):
+    return 1/(2*pi) * log(abs_vec(x))
 
+if args.helm:
+  def grad_phi(x):
+    return +1j/4 * k*(x)/abs_vec(x) * special.hankel1(1, k*abs_vec(x))
+else:
+  def grad_phi(x):
+    return 1/(2*pi) * x/abs2_vec(x)
+
+# # The outgoing fundamental solution to the Helmholtz operator in 2 dimensions
+# def phi_k(x):
+# def grad_phi_k(x):
+ 
 
 def kernel_non_diagonal(s, t):
-  x = r(s)
-  y = r(t)
-  if args.helm:
-    return dot(grad_phi_k(y-x), nu(t))
-  else:
-    return 1/(2*pi) * dot((y-x), nu(t)) / abs2_vec(y-x)
+  x, y = r(s), r(t)
+  return dot(grad_phi(y-x), nu(t))
 # def acoustic_kernel_non_diagonal(s, t):
 #   x = r(s)
 #   y = r(t)
@@ -170,22 +176,12 @@ def kernel_diagonal(t):
     / pow(RPrim(t)**2 + R(t)**2, 3/2)
   )
 def calcKernelMat(t):
-  print("calcKernelMat")
-  print(np.shape(t))
-  # s = in_t[:, None]
-  # t = in_t[None, :]
   T, S = np.meshgrid(t, t)
-  print(np.shape(T))
-  print(np.shape(S))
-  # abort()
   mat = kernel_non_diagonal(S, T)
   diag = kernel_diagonal(t)
 
   # Insert the diagonals
   idcs = np.arange(len(t))
-  print(np.shape(mat))
-  print(np.shape(idcs))
-  print(np.shape(diag))
   mat[idcs, idcs] = diag
 
   return mat
@@ -213,38 +209,23 @@ def solve_u(M, t, bounds, kernelMat):
   N = len(t)
   # dsdt = sqrt(RPrim(t)**2 + R(t)**2)
   dsdt = abs_vec(rPrim(t))
-  print(np.shape(kernelMat))
-  print(np.shape(diag(dsdt)))
-  print(np.shape(g(t)))
-  print("DSFSDF")
-  # print(np.shape(r(t)))
-  # print(np.shape(rPrim(t)))
-  # print(np.shape(rBis(t)))
-  # print(np.shape(abs_vec(r(t))))
-  # print(np.shape(abs_vec(rPrim(t))))
-  # print(np.shape(abs_vec(rBis(t))))
   h = linalg.solve(eye(N)/2 + 2*pi/N*kernelMat @ diag(dsdt), g(t))
-  print(np.shape(h))
-  print(dsdt)
 
   x1 = np.linspace(bounds[0], bounds[1], M, dtype=dtype)
   x2 = np.linspace(bounds[2], bounds[3], M, dtype=dtype)
   X = np.array(np.meshgrid(x1, x2))
   
+  dt = 2*pi/N
+  # u = kernelMat @ (h * dsdt * dt)
+  # print("sdflksdfjklsdfj")
+  # print(np.shape(u))
   u = np.zeros((M, M), dtype=h.dtype)
-  
   for i, t_i in enumerate(tqdm(t)):
     y_i = r(t_i)[:, None, None]
     nu_i = nu(t_i)[:, None, None]
-    print(np.shape(y_i))
-    print(np.shape(nu_i))
-    print(np.shape(X))
    
-    # abort()
-    numerator = dot(nu_i, y_i - X)
-    denominator = abs2_vec(y_i - X)
-    phi = 1/(2*pi) * numerator / denominator
-    u += phi * h[i] * dsdt[i] * 2*pi/N
+    kernel_val = dot(grad_phi(y_i - X), nu(t_i))
+    u += kernel_val * h[i] * dsdt[i] * dt
 
   return mask(X) * u
 
@@ -261,14 +242,16 @@ def solve_boundary_v(t, t_odd, kernelMat_odd):
   # kernelMat_odd = calcKernelMat(t_odd) 
   h_odd = linalg.solve(eye(N)/2 + 2*pi/N * kernelMat_odd @ diag(dsdt_odd), g(t_odd))
 
+  dt = 2*pi/N
   x = r_complex(t)
-  v = np.zeros((N))
+  v = np.zeros((N), dtype=h_odd.dtype)
   for i, t_odd_i in enumerate(t_odd):
     y = r_complex(t_odd_i)
-    numerator = nu_complex(t_odd_i)
-    denominator = y - x
-    phi = 1/(2*pi) * imag(numerator / denominator)
-    v += phi * h_odd[i] * dsdt_odd[i] * 2*pi/N
+    # numerator = nu_complex(t_odd_i)
+    # denominator = y - x
+    # phi = 1/(2*pi) * imag(numerator / denominator)
+    kernel_val = dot(grad_phi(y - x), nu(t_odd_i))
+    v += kernel_val * h_odd[i] * dsdt_odd[i] * dt
   return v
 
 def solve_u_better(M, t, v, bounds):
@@ -324,7 +307,7 @@ def plot_kernel_and_show(mat, extent=None):
 def secret_u(r): # u at coord r
   if args.helm:
     # return phi_k(r - p)
-    return -10j/4 * special.hankel1(0, k * abs_vec(r - 4))
+    return special.hankel1(0, k * abs_vec(r - p))
   else:
     return exp((r[0] + 0.3*r[1])/3) * sin((0.3*r[0] - r[1])/3)
   
