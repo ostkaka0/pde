@@ -194,7 +194,7 @@ def calcKernelMat(t):
 
 def mask(x):
   t = np.atan2(x[0], x[1])
-  return np.where(abs2_vec2(x) <= R(t)**2, 1, 0)
+  return np.where(abs2_vec2(x) <= R(t)**2, 1, float('nan')) # Nan is preferable to 0 because we want a white/transparent background.
 def mask_complex(z):
   return mask(np.array([z.real, z.imag]))
 
@@ -209,6 +209,14 @@ def solve_u(kernelMat, X, t, dsdt, dt):
     nu_i = nu(t_i)[:, None, None]
    
     kernel_val = dot(grad_phi(y_i - X), nu(t_i))
+    print("y_i", y_i)
+    print("X", X)
+    print("t_i", t_i)
+    print(u)
+    print("-", kernel_val)
+    print(h)
+    print(dsdt)
+    print(dt)
     u += kernel_val * h[i] * dsdt[i] * dt
 
   return mask(X) * u
@@ -261,26 +269,53 @@ def correct_boundary_v(t):
   return secret_v(x)
 
 ## Plotting functions
-def plot_mat_and_show(mat, extent=None, vmin=None, vmax=None):
-  plt.imshow(real(mat.T), origin = 'lower', cmap='CMRmap_r', vmin=vmin, vmax=vmax, extent=extent)
-  plt.axis('equal')
-  plt.colorbar()
+# Plot A, B, and the log-abs error of A assuming B is the correct solution.
+def plot_mat_comparison_and_show(A, B, extent=None, vmin=None, vmax=None):
+  log_abs_err = log(abs(A - B))
+  fig, ax = plt.subplots(1, 3, sharex=True, sharey=True)
+
+  im0 = ax[0].imshow(real(A.T), origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
+  im1 = ax[1].imshow(real(B.T), origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
+  im2 = ax[2].imshow(log_abs_err.T, origin = 'lower', cmap='turbo', extent=extent)
+  for a in ax:
+    a.set_aspect('equal', adjustable='box')
+    a.set_axis_off()
+    # a.set_xlabel("x1")
+    # a.set_ylabel("x2")
+  plt.colorbar(im0)
+  plt.colorbar(im1)
+  plt.colorbar(im2)
+  ax[0].set_title("approximation")
+  ax[1].set_title("Correct solution")
+  ax[2].set_title("Log-abs error")
+  plt.tight_layout()
   plt.show()
-def plot_kernel_and_show(mat, extent=None):
-  plt.xlabel("s")
-  plt.ylabel("t")
-  plt.imshow(real(mat.T), origin = 'lower', cmap='CMRmap_r', extent=extent)
-  plt.axis('equal')
-  plt.colorbar()
-  plt.show()
+# def plot_mat_and_show(mat, extent=None, vmin=None, vmax=None):
+#   plt.imshow(real(mat.T), origin = 'lower', cmap='CMRmap_r', vmin=vmin, vmax=vmax, extent=extent)
+#   plt.axis('equal')
+#   plt.colorbar()
+#   plt.show()
+
+# Plot kernel. If complex, we plot both real and imaginary.
+def plot_kernel_and_show(mat, extent=None, title=None):
+  fig, ax = plt.subplots(1, 2 if is_complex(mat) else 1, squeeze = False)
+  ax = ax[0]
+
+  ax[0].set_title(title + ("(real)" if is_complex(mat) else ""))
+  ax[0].set_xlabel("s")
+  ax[0].set_ylabel("t")
+  im1 = ax[0].imshow(real(mat.T), origin = 'lower', cmap='turbo', extent=extent)
+  ax[0].axis('equal')
+  fig.colorbar(im1)
   if is_complex(mat):
-    plt.title("imag")
-    plt.xlabel("s")
-    plt.ylabel("t")
-    plt.imshow(imag(mat.T), origin = 'lower', cmap='CMRmap_r', extent=extent)
-    plt.axis('equal')
-    plt.colorbar()
-    plt.show()
+    ax[1].set_title(title + "(imag)")
+    ax[1].set_xlabel("s")
+    ax[1].set_ylabel("t")
+    im2 = ax[1].imshow(imag(mat.T), origin = 'lower', cmap='turbo', extent=extent)
+    ax[1].axis('equal')
+    fig.colorbar(im2)
+  plt.tight_layout()
+  plt.show()
     
 
 ## Problem specific functions
@@ -340,18 +375,16 @@ print("Calculating kernel...")
 kernelMat = calcKernelMat(t);
 kernelMat_odd = calcKernelMat(t_odd);
 if args.q == 1 or args.q == 0:
-  plt.title("Kernel matrix")
-  plot_kernel_and_show(kernelMat, t_bounds)
+  plot_kernel_and_show(kernelMat, t_bounds, "Kernel matrix")
   print("Solving u...")
   u = solve_u(kernelMat, X, t, dsdt, dt)
   u_correct = correct_u(X)
-  plt.title("")
-  plt.xlabel("real x")
-  plt.ylabel("imag x")
-  plot_mat_and_show(u, x_bounds, -1, 1)
-  plot_mat_and_show(u_correct, x_bounds, -1, 1)
-  log_abs_err = log10(abs(u - u_correct))
-  plot_mat_and_show(log_abs_err, x_bounds)
+  plot_mat_comparison_and_show(u, u_correct, x_bounds, -1, 1)
+
+  # plot_mat_and_show(u, x_bounds, -1, 1)
+  # plot_mat_and_show(u_correct, x_bounds, -1, 1)
+  # log_abs_err = log10(abs(u - u_correct))
+  # plot_mat_and_show(log_abs_err, x_bounds)
 
 ## Problem 2:
 v = solve_boundary_v(t, t_odd, kernelMat_odd)
@@ -361,10 +394,12 @@ if args.cheat:
   v = v_correct;
 
 if args.q == 2 or args.q == 0:
-  plt.plot(t, v)
-  plt.plot(t, v_correct, ":")
+  plt.plot(t, v, label="Approximation")
+  plt.plot(t, v_correct, ":", label="Correct")
+  plt.title("v at boundary")
   plt.show()
   # Plot log-abs-error
+  plt.title("v at boundary - Log-abs error")
   log_abs_err_v = log10(abs(v - v_correct + np.mean(v_correct) - np.mean(v)))
   plt.plot(t_odd, log_abs_err_v)
   plt.show()
@@ -373,30 +408,64 @@ if args.q == 2 or args.q == 0:
 print("Calculating odd kernel...")
 kernelMat = calcKernelMat(t_odd);
 if args.q == 3 or args.q == 0:
-  plot_mat_and_show(kernelMat_odd, t_bounds_odd)
+  plot_kernel_and_show(kernelMat_odd, t_bounds_odd, "Odd kernel matrix")
   u = solve_u_better(M, t, v, x_bounds)
   u_correct = correct_u(X)
-  plot_mat_and_show(u, x_bounds, -3, 3)
-  plot_mat_and_show(u_correct, x_bounds, -3, 3)
-  log_abs_err = log10(abs(u - u_correct))
-  plot_mat_and_show(log_abs_err, x_bounds)
+  plot_mat_comparison_and_show(u, u_correct, x_bounds, -3, 3)
+  # plot_mat_and_show(u, x_bounds, -3, 3)
+  # plot_mat_and_show(u_correct, x_bounds, -3, 3)
+  # log_abs_err = log10(abs(u - u_correct))
+  # plot_mat_and_show(log_abs_err, x_bounds)
 
-## Problem 4:
+# Problem 4
 if args.q == 4 or args.q == 0:
-  d = np.linspace(0, 1.0)
-  D, T = np.meshgrid(d, t)  
-  X2 = r(T)- D * nu(T)
-  # plot_mat_and_show(X2[1], None, -1, 1)
+  # Measure the far-field error for different N. We will just measure the error at the point(0, 0)
+  x = np.array([0, 0])
 
-  plt.plot(X2[0, :], X2[1, :])
-  plt.plot(X2[0, :, 10], X2[1, :, 10])
-  plt.plot(X2[0, :,-1], X2[1, :, -1])
+  Ns        = np.arange(10, 1000, 10)
+  u         = []
+  u_correct = []
+  err       = []
+  for i, N2 in enumerate(Ns): 
+    t = np.linspace(-pi, pi, N2, dtype=dtype, endpoint=False)
+    dsdt = abs_vec2(rPrim(t))
+    kernelMat = calcKernelMat(t)
+    print("i", i, " N", N2)
+    print("t", t)
+    print("kernel", kernelMat)
+    print("x", x)
+    print("t", t)
+    print("dsdt", dsdt)
+    print("dt", dt)
+    print(".")
+    u        .append(solve_u(kernelMat, x, t, dsdt, dt))
+    u_correct.append(correct_u(x))
+    err      .append(log(abs(u[i] - u_correct[i])))
+
+  plt.plot(Ns, u)
+  plt.plot(Ns, u_correct)
+  plt.plot(Ns, err)
   plt.show()
+    
 
-  u2 = solve_u(kernelMat, X2, t, dsdt, dt)
-  u2_correct = correct_u(X2)
-  plot_mat_and_show(u2, None, -1, 1)
-  plot_mat_and_show(u2_correct, None, -1, 1)
-  log_abs_err = log10(abs(u2 - u2_correct))
-  plot_mat_and_show(log_abs_err)
+# ## Problem 4:
+# if args.q == 4 or args.q == 0:
+#   d = np.linspace(0, 1.0, 25)
+#   D, T = np.meshgrid(d, t)  
+#   X2 = r(T) - D * nu(T)
+#   # plot_mat_and_show(X2[1], None, -1, 1)
+
+#   plt.plot(X2[0, :], X2[1, :])
+#   plt.plot(X2[0, :, 10], X2[1, :, 10])
+#   plt.plot(X2[0, :,-1], X2[1, :, -1])
+#   plt.show()
+
+#   u2 = solve_u(kernelMat, X2, t, dsdt, dt)
+#   u2_correct = correct_u(X2)
+#   plot_mat_comparison_and_show(u2, u2_correct, None, -1, 1)
+  
+#   # plot_mat_and_show(u2, None, -1, 1)
+#   # plot_mat_and_show(u2_correct, None, -1, 1)
+#   # log_abs_err = log10(abs(u2 - u2_correct))
+#   # plot_mat_and_show(log_abs_err)
 
