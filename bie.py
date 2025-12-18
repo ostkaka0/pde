@@ -245,13 +245,13 @@ def solve_boundary_v(t, t_odd, kernelMat_odd):
   dt = 2*pi/N
   x = r_complex(t)
   v = np.zeros((N), dtype=h_odd.dtype)
+  
   for i, t_odd_i in enumerate(t_odd):
     y = r_complex(t_odd_i)
-    # numerator = nu_complex(t_odd_i)
-    # denominator = y - x
-    # phi = 1/(2*pi) * imag(numerator / denominator)
-    kernel_val = dot(grad_phi(y - x), nu(t_odd_i))
-    v += kernel_val * h_odd[i] * dsdt_odd[i] * dt
+    numerator = nu_complex(t_odd_i)
+    denominator = y - x
+    phi = 1/(2*pi) * imag(numerator / denominator)
+    v += phi * h_odd[i] * dsdt_odd[i] * dt
   return v
 
 def solve_u_better(M, t, v, bounds):
