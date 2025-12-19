@@ -1,5 +1,4 @@
 #!/usr/bin/python
-# © 2025 John Emanuelsson
 # File created 2025-12-19 08:33:16 CET
 
 import bie
@@ -91,7 +90,7 @@ def is_complex(x):
 def vecnorm(x):
   return sqrt(vecdot(x, x))
 
-# Define the boundary curve for our domain
+## Define the boundary curve for our domain
 class OurCurve(bie.PolarCurve):
   def R(self, t):
     return (3 + cos(4*t + np.pi))
@@ -99,6 +98,8 @@ class OurCurve(bie.PolarCurve):
     return (-4 * sin(4*t + np.pi))
   def RBis(self, t):
     return (-16 * cos(4*t + np.pi))
+
+our_curve = OurCurve()
 
 ## Problem specific functions
 # def phi_k(x):
