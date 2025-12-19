@@ -8,7 +8,7 @@
 import numpy as np
 from scipy import linalg
 from abc import ABC, abstractmethod
-from tqdm import tqdm
+from tqdm import tqdm # For progress bar
 
 # Closed polar parametic curve of the form: self.R(t) * exp(i t)
 class PolarCurve(ABC):
@@ -22,20 +22,19 @@ class PolarCurve(ABC):
   def RBis(self, t): pass
 
   def r(self, t):
-    return self.R(t)[..., np.newaxis] * np.array([np.cos(t), np.sin(t)])
+    return c2v(self.R(t) * np.exp(1j*t))
 
   def rPrim(self, t):
-    return (self.RPrim(t) + 1j*self.R(t))[..., np.newaxis] * np.array([np.cos(t), np.sin(t)])
+    return c2v((self.RPrim(t) + 1j*self.R(t)) * np.exp(1j*t))
 
   # nu = normal
   # Calculated by a 90 degree rotation of the tangent
   def nu(self, t):
-    rot_mat = np.array([[0, -1], [1, 0]], dtype = t.dtype)
-    return rot_mat @ self.rPrim(t) / norm(self.rPrim(t))
+    z = (-1j*self.RPrim(t) + self.R(t))
+    return c2v(z / np.abs(z) * np.exp(1j*t))
 
   # Returns 1 if coordinate is inside otherwise nan is returned
   def mask(self, x):
-    return 1
     t = np.atan2(x[...,0], x[...,1])
     return np.where(np.vecdot(x, x) <= self.R(t)**2, 1, float('nan')) # Nan is preferable over 0 because we want a white/transparent background when using plt.imshow.
 
@@ -43,6 +42,9 @@ class PolarCurve(ABC):
 # Turns complex-valued tensor into real tensor of 2d-vectors: complex (...,) to real (..., 2)
 def c2v(z):
   return np.stack((z.real, z.imag), axis=-1)
+# Turns tensor of 2d-vectors into complex tensor
+def v2c(x):
+  return x[..., 0] + 1j*x[..., 1]
 
 ## Functions not specific to our problem
 
@@ -96,14 +98,13 @@ def solve_u_better(M, t, g, v, x_bounds, curve):
   N = len(t)
   f = g + 1j*v
 
-  y = curve.r_complex(t)
-  dydt = curve.rPrim_complex(t)
+  y = v2c(curve.r(t))
+  dydt = v2c(curve.rPrim(t))
 
   z1 = np.linspace(x_bounds[0], x_bounds[1], M, dtype=t.dtype)
   z2 = np.linspace(x_bounds[2], x_bounds[3], M, dtype=t.dtype)
   Z1, Z2 = np.meshgrid(z1, z2)
   Z = Z1 + 1j*Z2
-  # Z = np.array(np.meshgrid(z1, z2))
   
   numerator = np.zeros((M, M), dtype=Z.dtype)
   denominator = np.zeros((M, M), dtype=Z.dtype)

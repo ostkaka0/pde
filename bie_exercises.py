@@ -65,39 +65,20 @@ complex_dtype = {
 }[args.float]
 print("dtypes:", dtype, ",", complex_dtype)
 
-## Aliases
-## Note: some aliases overrides built-in math-function
-pi = np.pi
-abs = np.abs
-pow = np.pow
-exp = np.exp
-cos = np.cos
-sin = np.sin
-sqrt = np.sqrt
-real = np.real
-imag = np.imag
-conj = np.conj
-log = np.log
-log10 = np.log10
-eye = np.eye
-diag = np.diag
-vecdot = np.linalg.vecdot
-
-
 ## Helper functions
 def is_complex(x):
   return np.iscomplexobj(x)
 def vecnorm(x):
-  return sqrt(vecdot(x, x))
+  return np.sqrt(np.vecdot(x, x))
 
 ## Define the boundary curve for our domain
 class OurCurve(bie.PolarCurve):
   def R(self, t):
-    return (3 + cos(4*t + np.pi))
+    return (3 + np.cos(4*t + np.pi))
   def RPrim(self, t):
-    return (-4 * sin(4*t + np.pi))
+    return (-4 * np.sin(4*t + np.pi))
   def RBis(self, t):
-    return (-16 * cos(4*t + np.pi))
+    return (-16 * np.cos(4*t + np.pi))
 
 our_curve = OurCurve()
 
@@ -112,7 +93,7 @@ if args.helm:
     return +1j/4 * args.k*x/x_norm * special.hankel1(1, args.k*x_norm)
 else:
   def grad_phi(x):
-    x_dot_x = vecdot(x, x)[..., np.newaxis]
+    x_dot_x = np.vecdot(x, x)[..., np.newaxis]
     return 1/(2*np.pi) * x / x_dot_x
 
 # Correct "secret" u at coord x
@@ -123,19 +104,19 @@ if args.helm:
     return hval
 else:
   def secret_u(x):
-    return exp((x[...,0] + 0.3*x[...,1])/3) * sin((0.3*x[...,0] - x[...,1])/3)
+    return np.exp((x[...,0] + 0.3*x[...,1])/3) * np.sin((0.3*x[...,0] - x[...,1])/3)
   
 def secret_v(x): # u at coord x
-  return exp((x[...,0] + 0.3*x[...,1])/3) * cos((0.3*x[...,0] - x[...,1])/3)
+  return np.exp((x[...,0] + 0.3*x[...,1])/3) * np.cos((0.3*x[...,0] - x[...,1])/3)
 
 ## Plotting functions
 # Plot A, B, and the log-abs error of A assuming B is the correct solution.
 def plot_mat_comparison_and_show(A, B, extent=None, vmin=None, vmax=None):
-  log_abs_err = log10(abs(A - B))
+  log_abs_err = np.log10(abs(A - B))
   fig, ax = plt.subplots(1, 3, sharex=True, sharey=True)
 
-  im0 = ax[0].imshow(real(A.T), origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
-  im1 = ax[1].imshow(real(B.T), origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
+  im0 = ax[0].imshow(A.T.real, origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
+  im1 = ax[1].imshow(B.T.real, origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
   im2 = ax[2].imshow(log_abs_err.T, origin = 'lower', cmap='turbo', extent=extent)
   for a in ax:
     a.set_aspect('equal', adjustable='box')
@@ -151,7 +132,7 @@ def plot_mat_comparison_and_show(A, B, extent=None, vmin=None, vmax=None):
   plt.tight_layout()
   plt.show()
 # def plot_mat_and_show(mat, extent=None, vmin=None, vmax=None):
-#   plt.imshow(real(mat.T), origin = 'lower', cmap='CMRmap_r', vmin=vmin, vmax=vmax, extent=extent)
+#   plt.imshow(mat.T.real, origin = 'lower', cmap='CMRmap_r', vmin=vmin, vmax=vmax, extent=extent)
 #   plt.axis('equal')
 #   plt.colorbar()
 #   plt.show()
@@ -164,14 +145,14 @@ def plot_kernel_and_show(mat, extent=None, title=None):
   ax[0].set_title(title + ("(real)" if is_complex(mat) else ""))
   ax[0].set_xlabel("s")
   ax[0].set_ylabel("t")
-  im1 = ax[0].imshow(real(mat.T), origin = 'lower', cmap='turbo', extent=extent)
+  im1 = ax[0].imshow(mat.real.T, origin = 'lower', cmap='turbo', extent=extent)
   ax[0].axis('equal')
   fig.colorbar(im1)
   if is_complex(mat):
     ax[1].set_title(title + "(imag)")
     ax[1].set_xlabel("s")
     ax[1].set_ylabel("t")
-    im2 = ax[1].imshow(imag(mat.T), origin = 'lower', cmap='turbo', extent=extent)
+    im2 = ax[1].imshow(mat.T.imag, origin = 'lower', cmap='turbo', extent=extent)
     ax[1].axis('equal')
     fig.colorbar(im2)
   plt.tight_layout()
@@ -228,7 +209,7 @@ if args.q == 2:
   plt.show()
   # Plot log-abs-error
   plt.title("v at boundary - Log-abs error")
-  log_abs_err_v = log10(abs(v - v_correct + np.mean(v_correct) - np.mean(v)))
+  log_abs_err_v = np.log10(abs(v - v_correct + np.mean(v_correct) - np.mean(v)))
   plt.plot(t_odd, log_abs_err_v)
   plt.show()
 
@@ -243,7 +224,7 @@ if args.q == 3:
   plot_mat_comparison_and_show(u, u_correct, x_bounds, -3, 3)
   # plot_mat_and_show(u, x_bounds, -3, 3)
   # plot_mat_and_show(u_correct, x_bounds, -3, 3)
-  # log_abs_err = log10(abs(u - u_correct))
+  # log_abs_err = np.log10(abs(u - u_correct))
   # plot_mat_and_show(log_abs_err, x_bounds)
 
 # Problem 4
@@ -251,24 +232,37 @@ if args.q == 4:
   # Measure the far-field error for different N. We will just measure the error at the point(0, 0)
   x = np.array([0, 0])
 
-  Ns        = np.arange(20, 500, 20)
+  Ns        = np.arange(10, 10+500, 10)
   u         = np.zeros(Ns.shape, dtype=complex_dtype)
   u_correct = np.zeros(Ns.shape, dtype=complex_dtype)
   err       = np.zeros(Ns.shape)
-  for i, N2 in enumerate(tqdm(Ns)): 
-    t = np.linspace(-np.pi, np.pi, N2, dtype=dtype, endpoint=False)
+  for i, N in enumerate(tqdm(Ns)): 
+    # print(N2)
+    # print(N2)
+    # print(N2)
+    # print(N2)
+    # print(N2)
+    t = np.linspace(-np.pi, np.pi, N, dtype=dtype, endpoint=False)
     dsdt = vecnorm(curve.rPrim(t))
+    dt = 2*np.pi/N
     kernelMat = bie.calcKernelMat(t, grad_phi, curve)
     g = secret_u(curve.r(t))
     u[i] = bie.solve_u(kernelMat, x, t, dsdt, dt, g, grad_phi, curve, show_progress=False)
-    u_correct[i] = secret_u(x) * curve.mask(x)
-    err[i] = log10(abs(u[i] - u_correct[i]))
+    u_correct[i] = secret_u(x)
+    err[i] = np.log10(abs(u[i] - u_correct[i]))
 
-  plt.plot(Ns, real(u), label="real u")
-  plt.plot(Ns, imag(u), label="imag u")
-  plt.plot(Ns, real(u_correct), ":", label="real u_correct")
-  plt.plot(Ns, imag(u_correct), ":", label="imag u_correct")
-  plt.plot(Ns, err, label="err")
+  b, a = np.polyfit(np.log(Ns), err, 1)
+
+  plt.plot(Ns, u.real, label="real u")
+  plt.plot(Ns, u.imag, label="imag u")
+  plt.plot(Ns, u_correct.real, ":", label="real u_correct")
+  plt.plot(Ns, u_correct.imag, ":", label="imag u_correct")
+  plt.xscale("log")
+  plt.legend()
+  plt.show()
+  plt.plot(Ns, err, label="Log-abs error")
+  plt.plot(Ns, a + b*np.log(Ns), label=f"{a} - {-b} log(N)")
+  plt.xscale("log")
   plt.legend()
   plt.show()
     
