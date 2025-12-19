@@ -108,61 +108,49 @@ log = np.log
 log10 = np.log10
 eye = np.eye
 diag = np.diag
+vecdot = np.linalg.vecdot
 
-def dot(x, y): return x[0]*y[0] + x[1]*y[1]
-# def dot(x, y): return np.tensordot(x, y, axes=([0], [0]))
-def abs_vec2(x):
-  return sqrt(abs2_vec2(x))
 
 ## Helper functions
-def abs2_vec2(x):
-  return x[0]**2 + x[1]**2
-
 def is_complex(x):
   return torch.is_complex(x) if args.pytorch else np.iscomplexobj(x)
+def vecnorm(x):
+  return sqrt(vecdot(x, x))
 
+# Turns complex-valued tensor into real tensor of 2d-vectors: complex (...,) to real (..., 2)
 def c2v(z):
-  return np.stack((z.real, z.imag))
+  return np.stack((z.real, z.imag), axis=-1)
 
 ## Functions not specific to our problem
-# Normal
+# Complex normal
+# Calculated by a 90 degree rotation of the tangent
 def nu_complex(t):
   return -1j * rPrim_complex(t) / abs(rPrim_complex(t))
+# Normal in vector form
 def nu(t):
   return c2v(nu_complex(t))
 
-
-
-
-
-# TODO: def phi(x):
-
+# TODO: Finish comment
+# Definition of phi depends wether we have a ... 
 if args.helm: # phi_k
   def phi(x):
-    return -1j/4 * special.hankel1(0, k * abs_vec2(x))
+    return -1j/4 * special.hankel1(0, k * vecnorm(x))
 else: # regular phi
   def phi(x):
-    return 1/(2*pi) * log(abs_vec2(x))
+    return 1/(2*pi) * log(vecnorm(x))
 
 if args.helm:
   def grad_phi(x):
-    return +1j/4 * k*(x)/abs_vec2(x) * special.hankel1(1, k*abs_vec2(x))
+    return +1j/4 * k*x/vecnorm(x)[..., np.newaxis] * special.hankel1(1, k*vecdot(x, x))[..., np.newaxis]
 else:
   def grad_phi(x):
-    return 1/(2*pi) * x/abs2_vec2(x)
-
-# # The outgoing fundamental solution to the Helmholtz operator in 2 dimensions
-# def phi_k(x):
-# def grad_phi_k(x):
+    return 1/(2*pi) * x/vecdot(x, x)[..., np.newaxis]
 
 
 def kernel_non_diagonal(s, t):
   x, y = r(s), r(t)
-  return dot(grad_phi(y-x), nu(t))
-# def acoustic_kernel_non_diagonal(s, t):
-#   x = r(s)
-#   y = r(t)
-#   return dot(grad_phi_k(y-x), nu(t))
+  return vecdot(grad_phi(y-x), nu(t))
+
 def kernel_diagonal(t):
   return (
     1 / (4*pi)
@@ -180,66 +168,48 @@ def calcKernelMat(t):
 
   return mat
 
-# def calcKernelMat2(t):
-#   T, S = np.meshgrid(t, t)
-#   print(k)
-#   mat = acoustic_kernel_non_diagonal(S, T)
-#   diag = kernel_diagonal(t)
-
-#   # Insert the diagonals
-#   idcs = np.arange(len(t))
-#   mat[idcs, idcs] = diag
-
-#   return mat
-
 def mask(x):
-  t = np.atan2(x[0], x[1])
-  return np.where(abs2_vec2(x) <= R(t)**2, 1, float('nan')) # Nan is preferable to 0 because we want a white/transparent background.
-def mask_complex(z):
-  return mask(np.array([z.real, z.imag]))
+  t = np.atan2(x[...,0], x[...,1])
+  return np.where(vecdot(x, x) <= R(t)**2, 1, float('nan')) # Nan is preferable to 0 because we want a white/transparent background.
 
 ## BIE-algorithms
 def solve_u(kernelMat, X, t, dsdt, dt):
   N = len(t)
+  # print(np.shape(kernelMat))
+  # print("X", np.shape(X))
+  # print(np.shape(t))
+  # print("dsdt", np.shape(dsdt))
+  # print(dt)
+  # print(np.shape(eye(N)/2 + kernelMat @ diag(dsdt * dt)))
+  # print(np.shape(r(t)))
+  # print(np.shape(g(t)))
   h = linalg.solve(eye(N)/2 + kernelMat @ diag(dsdt * dt), g(t))
-  
-  u = np.zeros(np.shape(X[0]), dtype=h.dtype)
+  # print("h", np.shape(h))
+
+  # Calculate u
+  u = np.zeros(X[...,0].shape, dtype=h.dtype)
   for i, t_i in enumerate(tqdm(t)):
-    y_i = r(t_i)[:, None, None]
-    nu_i = nu(t_i)[:, None, None]
-   
-    kernel_val = dot(grad_phi(y_i - X), nu(t_i))
-    print("y_i", y_i)
-    print("X", X)
-    print("t_i", t_i)
-    print(u)
-    print("-", kernel_val)
-    print(h)
-    print(dsdt)
-    print(dt)
-    u += kernel_val * h[i] * dsdt[i] * dt
+    y_i = r(t_i)
+    nu_i = nu(t_i)
+    kernel_val = vecdot(grad_phi(y_i - X), nu(t_i))
+    u += kernel_val * h[i] * dsdt[i]
+  u *= dt
 
   return mask(X) * u
 
 def correct_u(X):
   return mask(X) * secret_u(X)
   
-def solve_boundary_v(t, t_odd, kernelMat_odd):
-  N = len(t)
-  dsdt_odd = abs_vec2(rPrim(t_odd))
-  # kernelMat_odd = calcKernelMat(t_odd) 
-  h_odd = linalg.solve(eye(N)/2 + 2*pi/N * kernelMat_odd @ diag(dsdt_odd), g(t_odd))
+def solve_boundary_v(t, t_odd, kernelMat_odd, dsdt_odd, dt):
+  h_odd = linalg.solve(eye(N)/2 + kernelMat_odd @ diag(dsdt_odd * dt), g(t_odd))
 
-  dt = 2*pi/N
   x = r_complex(t)
-  v = np.zeros((N), dtype=h_odd.dtype)
-  
+  y = r_complex(t_odd)
+  v = np.zeros(len(t), dtype=h_odd.dtype)
   for i, t_odd_i in enumerate(t_odd):
-    y = r_complex(t_odd_i)
     numerator = nu_complex(t_odd_i)
-    denominator = y - x
-    phi = 1/(2*pi) * imag(numerator / denominator)
-    v += phi * h_odd[i] * dsdt_odd[i] * dt
+    denominator = y[i] - x
+    v += 1/(2*pi) * imag(numerator / denominator) * h_odd[i] * dsdt_odd[i] * dt
   return v
 
 def solve_u_better(M, t, v, x_bounds):
@@ -261,8 +231,7 @@ def solve_u_better(M, t, v, x_bounds):
     numerator   += (f[i] / (y[i]-Z)) * dydt[i] * 2*pi/N
     denominator += (1    / (y[i]-Z)) * dydt[i] * 2*pi/N
   u = real(numerator / denominator)
-
-  return mask_complex(Z) * u
+  return mask(c2v(Z)) * u
 
 def correct_boundary_v(t):
   x = r(t)
@@ -271,7 +240,7 @@ def correct_boundary_v(t):
 ## Plotting functions
 # Plot A, B, and the log-abs error of A assuming B is the correct solution.
 def plot_mat_comparison_and_show(A, B, extent=None, vmin=None, vmax=None):
-  log_abs_err = log(abs(A - B))
+  log_abs_err = log10(abs(A - B))
   fig, ax = plt.subplots(1, 3, sharex=True, sharey=True)
 
   im0 = ax[0].imshow(real(A.T), origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
@@ -322,12 +291,12 @@ def plot_kernel_and_show(mat, extent=None, title=None):
 def secret_u(r): # u at coord r
   if args.helm:
     # return phi_k(r - p)
-    return special.hankel1(0, k * abs_vec2(r - p))
+    return special.hankel1(0, k * vecnorm(r - p))
   else:
-    return exp((r[0] + 0.3*r[1])/3) * sin((0.3*r[0] - r[1])/3)
+    return exp((r[...,0] + 0.3*r[...,1])/3) * sin((0.3*r[...,0] - r[...,1])/3)
   
 def secret_v(r): # u at coord r
-  return exp((r[0] + 0.3*r[1])/3) * cos((0.3*r[0] - r[1])/3)
+  return exp((r[...,0] + 0.3*r[...,1])/3) * cos((0.3*r[...,0] - r[...,1])/3)
 # Boundary-values
 def g(t):
   return secret_u(r(t))
@@ -356,17 +325,18 @@ def rBis(t): return c2v(rBis_complex(t))
 #   return (RBis(t) + 2j*RPrim(t) - R(t)) * np.stack([cos(t), sin(t)], axis=-1)
 
 ### Excersises
-t = np.linspace(-pi, pi, N, dtype=dtype, endpoint=False)
-t_odd = t + (t[1]-t[0])/2 # Assumes equal spacing between t-values
+t = np.linspace(-pi + 2*pi/N, pi, N, dtype=dtype)
+# t = np.linspace(-pi, pi, N, dtype=dtype, endpoint=False)
+t_odd = t - (t[1]-t[0])/2 # Assumes equal spacing between t-values
 dt = 2*pi/N
-dsdt = abs_vec2(rPrim(t))
-dsdt_odd = abs_vec2(rPrim(t_odd))
+dsdt = vecnorm(rPrim(t))
+dsdt_odd = vecnorm(rPrim(t_odd))
 x_bounds = (-4, 4, -4, 4)
 t_bounds = (t[0], t[-1], t[0], t[-1])
 t_bounds_odd = (t_odd[0], t_odd[-1], t_odd[0], t_odd[-1])
 x1 = np.linspace(x_bounds[0], x_bounds[1], M, dtype=dtype)
 x2 = np.linspace(x_bounds[2], x_bounds[3], M, dtype=dtype)
-X = np.array(np.meshgrid(x1, x2))
+X = np.stack(np.meshgrid(x1, x2), axis=-1)
 
 # plt.plot(t, kernel_diag())
 
@@ -387,11 +357,15 @@ if args.q == 1 or args.q == 0:
   # plot_mat_and_show(log_abs_err, x_bounds)
 
 ## Problem 2:
-v = solve_boundary_v(t, t_odd, kernelMat_odd)
+v = solve_boundary_v(t, t_odd, kernelMat_odd, dsdt_odd, dt)
 v_correct = correct_boundary_v(t)
+print("v", v.shape)
+print("v_correct", v_correct.shape)
+print("t", t.shape)
+print("r t", r(t).shape)
 
 if args.cheat:
-  v = v_correct;
+  v = v_correct
 
 if args.q == 2 or args.q == 0:
   plt.plot(t, v, label="Approximation")
@@ -428,7 +402,7 @@ if args.q == 4 or args.q == 0:
   err       = []
   for i, N2 in enumerate(Ns): 
     t = np.linspace(-pi, pi, N2, dtype=dtype, endpoint=False)
-    dsdt = abs_vec2(rPrim(t))
+    dsdt = vecnorm(rPrim(t))
     kernelMat = calcKernelMat(t)
     print("i", i, " N", N2)
     print("t", t)
@@ -440,7 +414,7 @@ if args.q == 4 or args.q == 0:
     print(".")
     u        .append(solve_u(kernelMat, x, t, dsdt, dt))
     u_correct.append(correct_u(x))
-    err      .append(log(abs(u[i] - u_correct[i])))
+    err      .append(log10(abs(u[i] - u_correct[i])))
 
   plt.plot(Ns, u)
   plt.plot(Ns, u_correct)
