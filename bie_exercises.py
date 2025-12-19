@@ -66,8 +66,6 @@ complex_dtype = {
 print("dtypes:", dtype, ",", complex_dtype)
 
 ## Helper functions
-def is_complex(x):
-  return np.iscomplexobj(x)
 def vecnorm(x):
   return np.sqrt(np.vecdot(x, x))
 
@@ -82,11 +80,6 @@ class OurCurve(bie.PolarCurve):
 
 our_curve = OurCurve()
 
-## Problem specific functions
-# def phi_k(x):
-#   return -1j/4 * special.hankel1(0, args.k * vecnorm(x))
-# def phi(x):
-#   return 1/(2*np.pi) * log(vecnorm(x))
 if args.helm:
   def grad_phi(x):
     x_norm = vecnorm(x)[..., np.newaxis]
@@ -131,24 +124,19 @@ def plot_mat_comparison_and_show(A, B, extent=None, vmin=None, vmax=None):
   ax[2].set_title("Log-abs error")
   plt.tight_layout()
   plt.show()
-# def plot_mat_and_show(mat, extent=None, vmin=None, vmax=None):
-#   plt.imshow(mat.T.real, origin = 'lower', cmap='CMRmap_r', vmin=vmin, vmax=vmax, extent=extent)
-#   plt.axis('equal')
-#   plt.colorbar()
-#   plt.show()
 
 # Plot kernel. If complex, we plot both real and imaginary.
 def plot_kernel_and_show(mat, extent=None, title=None):
-  fig, ax = plt.subplots(1, 2 if is_complex(mat) else 1, squeeze = False)
+  fig, ax = plt.subplots(1, 2 if np.iscomplexobj(mat) else 1, squeeze = False)
   ax = ax[0]
 
-  ax[0].set_title(title + ("(real)" if is_complex(mat) else ""))
+  ax[0].set_title(title + ("(real)" if np.iscomplexobj(mat) else ""))
   ax[0].set_xlabel("s")
   ax[0].set_ylabel("t")
   im1 = ax[0].imshow(mat.real.T, origin = 'lower', cmap='turbo', extent=extent)
   ax[0].axis('equal')
   fig.colorbar(im1)
-  if is_complex(mat):
+  if np.iscomplexobj(mat):
     ax[1].set_title(title + "(imag)")
     ax[1].set_xlabel("s")
     ax[1].set_ylabel("t")
@@ -160,8 +148,7 @@ def plot_kernel_and_show(mat, extent=None, title=None):
 
 
 
-
-### Excersises
+# Excersises
 curve = OurCurve()
 t = np.linspace(-np.pi + 2*np.pi/args.N, np.pi, args.N, dtype=dtype)
 # t = np.linspace(-np.pi, np.pi, args.N, dtype=dtype, endpoint=False)
@@ -222,10 +209,6 @@ if args.q == 3:
   u = bie.solve_u_better(args.M, t, g, v, x_bounds, curve)
   u_correct = secret_u(X) * curve.mask(X)
   plot_mat_comparison_and_show(u, u_correct, x_bounds, -3, 3)
-  # plot_mat_and_show(u, x_bounds, -3, 3)
-  # plot_mat_and_show(u_correct, x_bounds, -3, 3)
-  # log_abs_err = np.log10(abs(u - u_correct))
-  # plot_mat_and_show(log_abs_err, x_bounds)
 
 # Problem 4
 if args.q == 4:
@@ -234,57 +217,21 @@ if args.q == 4:
 
   Ns        = np.arange(10, 10+500, 10)
   u         = np.zeros(Ns.shape, dtype=complex_dtype)
-  u_correct = np.zeros(Ns.shape, dtype=complex_dtype)
+  u_correct = secret_u(x)
   err       = np.zeros(Ns.shape)
   for i, N in enumerate(tqdm(Ns)): 
-    # print(N2)
-    # print(N2)
-    # print(N2)
-    # print(N2)
-    # print(N2)
     t = np.linspace(-np.pi, np.pi, N, dtype=dtype, endpoint=False)
     dsdt = vecnorm(curve.rPrim(t))
     dt = 2*np.pi/N
     kernelMat = bie.calcKernelMat(t, grad_phi, curve)
     g = secret_u(curve.r(t))
     u[i] = bie.solve_u(kernelMat, x, t, dsdt, dt, g, grad_phi, curve, show_progress=False)
-    u_correct[i] = secret_u(x)
-    err[i] = np.log10(abs(u[i] - u_correct[i]))
+    err[i] = np.log10(abs(u[i] - u_correct))
 
   b, a = np.polyfit(np.log(Ns), err, 1)
-
-  plt.plot(Ns, u.real, label="real u")
-  plt.plot(Ns, u.imag, label="imag u")
-  plt.plot(Ns, u_correct.real, ":", label="real u_correct")
-  plt.plot(Ns, u_correct.imag, ":", label="imag u_correct")
-  plt.xscale("log")
-  plt.legend()
   plt.show()
   plt.plot(Ns, err, label="Log-abs error")
   plt.plot(Ns, a + b*np.log(Ns), label=f"{a} - {-b} log(N)")
   plt.xscale("log")
   plt.legend()
   plt.show()
-    
-
-# ## Problem 4:
-# if args.q == 4 or args.q == 0:
-#   d = np.linspace(0, 1.0, 25)
-#   D, T = np.meshgrid(d, t)  
-#   X2 = curve.r(T) - D * curve.nu(T)
-#   # plot_mat_and_show(X2[1], None, -1, 1)
-
-#   plt.plot(X2[0, :], X2[1, :])
-#   plt.plot(X2[0, :, 10], X2[1, :, 10])
-#   plt.plot(X2[0, :,-1], X2[1, :, -1])
-#   plt.show()
-
-#   u2 = solve_u(kernelMat, X2, t, dsdt, dt)
-#   u2_correct = correct_u(X2)
-#   plot_mat_comparison_and_show(u2, u2_correct, None, -1, 1)
-  
-#   # plot_mat_and_show(u2, None, -1, 1)
-#   # plot_mat_and_show(u2_correct, None, -1, 1)
-#   # log_abs_err = log10(abs(u2 - u2_correct))
-#   # plot_mat_and_show(log_abs_err)
-
