@@ -197,7 +197,7 @@ if args.q == 3:
   g = secret_u(curve.r(t))
   u = bie.solve_u_better(X, t, dt, g, v, curve)
   u_correct = secret_u(X) * curve.mask(X)
-  plot_mat_comparison_and_show(u, u_correct, x_bounds, -3, 3)
+  plot_mat_comparison_and_show(u, u_correct, x_bounds, -1, 1)
 
 # Problem 4
 if args.q == 4:
