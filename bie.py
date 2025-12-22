@@ -29,6 +29,7 @@ class PolarCurve(ABC):
 
   # nu = normal
   # Calculated by a 90 degree rotation of the tangent
+  # We use complex numbers here because it's easier that way.
   def nu(self, t):
     z = (-1j*self.RPrim(t) + self.R(t))
     return c2v(z / np.abs(z) * np.exp(1j*t))
@@ -42,17 +43,16 @@ class PolarCurve(ABC):
 # Turns complex-valued tensor into real tensor of 2d-vectors: complex (...,) to real (..., 2)
 def c2v(z):
   return np.stack((z.real, z.imag), axis=-1)
-# Turns tensor of 2d-vectors into complex tensor
+
+# Turns 2d-vectors into complex values
 def v2c(x):
   return x[..., 0] + 1j*x[..., 1]
-
-## Functions not specific to our problem
 
 def calcKernelMat(t, grad_phi, curve):
   # Create a mesh-grid of S & T such that
   # S_ij = t_i
   # T_ij = t_j
-  T, S = np.meshgrid(t, t) # T_ij = t_i, S_ij = S_j
+  T, S = np.meshgrid(t, t)
   X = curve.r(S) #X_ij = r(S_ij) = r(t_i)
   Y = curve.r(T) #Y_ij = r(T_ij) = r(t_j)
   mat = np.vecdot(grad_phi(Y-X), curve.nu(T))
@@ -61,14 +61,11 @@ def calcKernelMat(t, grad_phi, curve):
     * (-curve.RBis(t) * curve.R(t)  + 2*curve.RPrim(t)**2  + curve.R(t)**2)
     / pow(curve.RPrim(t)**2 + curve.R(t)**2, 3/2)
   )
-  # Insert the diagonals
+  # Insert the diagonals and return
   idcs = np.arange(len(t))
   mat[idcs, idcs] = diag
-
   return mat
 
-
-## BIE-algorithms
 def solve_u(kernelMat, X, t, dsdt, dt, g, grad_phi, curve, show_progress=True):
   N = len(t)
   h = linalg.solve(np.eye(N)/2 + kernelMat @ np.diag(dsdt * dt), g)
@@ -98,14 +95,14 @@ def solve_boundary_v(t, t_odd, kernelMat_odd, dsdt_odd, dt, g_odd, curve):
   return v
 
 def solve_u_better(X, t, dt, g, v, curve):
-  N = len(t)
   f = g + 1j*v
   y = v2c(curve.r(t))
   dydt = v2c(curve.rPrim(t))
   Z = X[..., 0] + 1j*X[..., 1]
   
-  numerator = np.zeros(X[..., 0].shape, dtype=Z.dtype)
-  denominator = np.zeros(X[..., 0].shape, dtype=Z.dtype)
+  out_shape = X[..., 0].shape
+  numerator   = np.zeros(out_shape, dtype=Z.dtype)
+  denominator = np.zeros(out_shape, dtype=Z.dtype)
   for i, t_i in enumerate(tqdm(t)):
     numerator   += (f[i] / (y[i]-Z)) * dydt[i] * dt
     denominator += (1    / (y[i]-Z)) * dydt[i] * dt

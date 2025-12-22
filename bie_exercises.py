@@ -76,6 +76,7 @@ class OurCurve(bie.PolarCurve):
   def RBis(self, t):
     return (-16 * np.cos(4*t + np.pi))
 
+# Our fundamental solution
 if args.helm:
   def grad_phi(x):
     x_norm = vecnorm(x)[..., np.newaxis]
