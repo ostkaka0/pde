@@ -9,9 +9,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 
 ## Parse arguments
-print("A")
 parser = argparse.ArgumentParser()
-print("B")
 parser.add_argument(
   "-N",
   type=int,
@@ -106,8 +104,8 @@ def plot_mat_comparison_and_show(A, B, extent=None, vmin=None, vmax=None):
   log_abs_err = np.log10(abs(A - B))
   fig, ax = plt.subplots(1, 3, sharex=True, sharey=True)
 
-  im0 = ax[0].imshow(A.T.real, origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
-  im1 = ax[1].imshow(B.T.real, origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
+  im0 = ax[0].imshow(A.real, origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
+  im1 = ax[1].imshow(B.real, origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
   im2 = ax[2].imshow(log_abs_err.T, origin = 'lower', cmap='turbo', extent=extent)
   for a in ax:
     a.set_aspect('equal', adjustable='box')
@@ -149,16 +147,16 @@ if args.q == 1:
   fig, ax = plt.subplots(1, 2 if np.iscomplexobj(kernelMat) else 1, squeeze = False)
   ax = ax[0]
   ax[0].set_title(title + ("(real)" if np.iscomplexobj(kernelMat) else ""))
-  ax[0].set_xlabel("s")
-  ax[0].set_ylabel("t")
-  im1 = ax[0].imshow(kernelMat.real.T, origin = 'lower', cmap='turbo', extent=t_bounds)
+  ax[0].set_xlabel("t")
+  ax[0].set_ylabel("s")
+  im1 = ax[0].imshow(kernelMat.real, origin = 'lower', cmap='turbo', extent=t_bounds)
   ax[0].axis('equal')
   fig.colorbar(im1)
   if np.iscomplexobj(kernelMat):
     ax[1].set_title(title + "(imag)")
-    ax[1].set_xlabel("s")
-    ax[1].set_ylabel("t")
-    im2 = ax[1].imshow(kernelMat.T.imag, origin = 'lower', cmap='turbo', extent=t_bounds)
+    ax[1].set_xlabel("t")
+    ax[1].set_ylabel("s")
+    im2 = ax[1].imshow(kernelMat.imag, origin = 'lower', cmap='turbo', extent=t_bounds)
     ax[1].axis('equal')
     fig.colorbar(im2)
   plt.tight_layout()
@@ -171,35 +169,34 @@ if args.q == 1:
   plot_mat_comparison_and_show(u, u_correct, x_bounds, -1, 1)
 
 ## Problem 2:
-kernelMat_odd = None
+# Note that we use v in problem 3 as well
 v = None
 if args.q == 2 or args.q == 3:
   print("Calculating kernel...")
   kernelMat_odd = bie.calcKernelMat(t_odd, grad_phi, curve);
   g_odd = secret_u(curve.r(t_odd))
   v = bie.solve_boundary_v(t, t_odd, kernelMat_odd, dsdt_odd, dt, g_odd, curve)
-  v_correct = secret_v(curve.r(t))
-
   if args.cheat:
     v = v_correct # We use the correct v from now on if we are cheating
 
-  if args.q == 2:
-    plt.plot(t, v, label="Approximation")
-    plt.plot(t, v_correct, ":", label="Correct")
-    plt.title("v at boundary")
-    plt.show()
-    # Plot log-abs-error
-    plt.title("v at boundary - Log-abs error")
-    log_abs_err_v = np.log10(abs(v - v_correct + np.mean(v_correct) - np.mean(v)))
-    plt.plot(t_odd, log_abs_err_v)
-    plt.show()
+# Code exclusively for problem 2  
+if args.q == 2:
+  v_correct = secret_v(curve.r(t))
+  # Plot of v and v_correct
+  plt.plot(t, v, label="Approximation")
+  plt.plot(t, v_correct, ":", label="Correct")
+  plt.title("v at boundary")
+  plt.show()
+  # Plot log-abs-error where we subtract the mean first because we don't care about the constant difference.
+  plt.title("v at boundary - Log-abs error")
+  log_abs_err_v = np.log10(abs(v - v_correct + np.mean(v_correct) - np.mean(v)))
+  plt.plot(t_odd, log_abs_err_v)
+  plt.show()
 
 ## Problem 3
-print("Calculating odd kernel...")
-kernelMat = bie.calcKernelMat(t_odd, grad_phi, curve);
 if args.q == 3:
   g = secret_u(curve.r(t))
-  u = bie.solve_u_better(args.M, t, g, v, x_bounds, curve)
+  u = bie.solve_u_better(X, t, dsdt, dt, g, v, curve)
   u_correct = secret_u(X) * curve.mask(X)
   plot_mat_comparison_and_show(u, u_correct, x_bounds, -3, 3)
 
@@ -210,7 +207,7 @@ if args.q == 4:
   u_correct = secret_u(x)
 
   # Calculate u at (0, 0) for different Ns and calculate the error
-  Ns        = np.arange(50, args.N + 10, 10)
+  Ns        = np.arange(5, args.N + 5, 5)
   u         = np.zeros(Ns.shape, dtype=complex_dtype)
   err       = np.zeros(Ns.shape)
   for i, N in enumerate(tqdm(Ns)): 

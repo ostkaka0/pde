@@ -49,9 +49,12 @@ def v2c(x):
 ## Functions not specific to our problem
 
 def calcKernelMat(t, grad_phi, curve):
-  T, S = np.meshgrid(t, t)
-  X = curve.r(S)
-  Y = curve.r(T)
+  # Create a mesh-grid of S & T such that
+  # S_ij = t_i
+  # T_ij = t_j
+  T, S = np.meshgrid(t, t) # T_ij = t_i, S_ij = S_j
+  X = curve.r(S) #X_ij = r(S_ij) = r(t_i)
+  Y = curve.r(T) #Y_ij = r(T_ij) = r(t_j)
   mat = np.vecdot(grad_phi(Y-X), curve.nu(T))
   diag = (
     1 / (4*np.pi)
@@ -94,22 +97,17 @@ def solve_boundary_v(t, t_odd, kernelMat_odd, dsdt_odd, dt, g_odd, curve):
     v += 1/(2*np.pi) * (numerator / denominator).imag * h_odd[i] * dsdt_odd[i] * dt
   return v
 
-def solve_u_better(M, t, g, v, x_bounds, curve):
+def solve_u_better(X, t, dt, g, v, curve):
   N = len(t)
   f = g + 1j*v
-
   y = v2c(curve.r(t))
   dydt = v2c(curve.rPrim(t))
-
-  z1 = np.linspace(x_bounds[0], x_bounds[1], M, dtype=t.dtype)
-  z2 = np.linspace(x_bounds[2], x_bounds[3], M, dtype=t.dtype)
-  Z1, Z2 = np.meshgrid(z1, z2)
-  Z = Z1 + 1j*Z2
+  Z = X[..., 0] + 1j*X[..., 1]
   
-  numerator = np.zeros((M, M), dtype=Z.dtype)
-  denominator = np.zeros((M, M), dtype=Z.dtype)
+  numerator = np.zeros(X[..., 0].shape, dtype=Z.dtype)
+  denominator = np.zeros(X[..., 0].shape, dtype=Z.dtype)
   for i, t_i in enumerate(tqdm(t)):
-    numerator   += (f[i] / (y[i]-Z)) * dydt[i] * 2*np.pi/N
-    denominator += (1    / (y[i]-Z)) * dydt[i] * 2*np.pi/N
+    numerator   += (f[i] / (y[i]-Z)) * dydt[i] * dt
+    denominator += (1    / (y[i]-Z)) * dydt[i] * dt
   u = (numerator / denominator).real
-  return curve.mask(c2v(Z)) * u
+  return curve.mask(X) * u
