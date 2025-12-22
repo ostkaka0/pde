@@ -106,14 +106,14 @@ def plot_mat_comparison_and_show(A, B, extent=None, vmin=None, vmax=None):
 
   im0 = ax[0].imshow(A.real, origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
   im1 = ax[1].imshow(B.real, origin = 'lower', vmin=vmin, vmax=vmax, extent=extent)
-  im2 = ax[2].imshow(log_abs_err.T, origin = 'lower', cmap='turbo', extent=extent)
+  im2 = ax[2].imshow(log_abs_err, origin = 'lower', cmap='turbo', extent=extent)
   for a in ax:
     a.set_aspect('equal', adjustable='box')
     a.set_axis_off()
   plt.colorbar(im0)
   plt.colorbar(im1)
   plt.colorbar(im2)
-  ax[0].set_title("approximation")
+  ax[0].set_title("Approximation")
   ax[1].set_title("Correct solution")
   ax[2].set_title("Log-abs error")
   plt.tight_layout()
@@ -147,18 +147,17 @@ if args.q == 1:
   fig, ax = plt.subplots(1, 2 if np.iscomplexobj(kernelMat) else 1, squeeze = False)
   ax = ax[0]
   ax[0].set_title(title + ("(real)" if np.iscomplexobj(kernelMat) else ""))
-  ax[0].set_xlabel("t")
-  ax[0].set_ylabel("s")
   im1 = ax[0].imshow(kernelMat.real, origin = 'lower', cmap='turbo', extent=t_bounds)
-  ax[0].axis('equal')
   fig.colorbar(im1)
   if np.iscomplexobj(kernelMat):
     ax[1].set_title(title + "(imag)")
-    ax[1].set_xlabel("t")
-    ax[1].set_ylabel("s")
     im2 = ax[1].imshow(kernelMat.imag, origin = 'lower', cmap='turbo', extent=t_bounds)
-    ax[1].axis('equal')
+    
     fig.colorbar(im2)
+  for a in ax:
+    a.set_xlabel("t")
+    a.set_ylabel("s")
+    a.axis('equal')
   plt.tight_layout()
   plt.show()
 
@@ -196,7 +195,7 @@ if args.q == 2:
 ## Problem 3
 if args.q == 3:
   g = secret_u(curve.r(t))
-  u = bie.solve_u_better(X, t, dsdt, dt, g, v, curve)
+  u = bie.solve_u_better(X, t, dt, g, v, curve)
   u_correct = secret_u(X) * curve.mask(X)
   plot_mat_comparison_and_show(u, u_correct, x_bounds, -3, 3)
 
