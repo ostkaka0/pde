@@ -96,7 +96,7 @@ else:
   def secret_u(x):
     return np.exp((x[...,0] + 0.3*x[...,1])/3) * np.sin((0.3*x[...,0] - x[...,1])/3)
   
-def secret_v(x): # u at coord x
+def secret_v(x): # Correct v at coord x
   return np.exp((x[...,0] + 0.3*x[...,1])/3) * np.cos((0.3*x[...,0] - x[...,1])/3)
 
 ## Plotting functions
@@ -141,10 +141,9 @@ t_bounds_odd = (t_odd[0], t_odd[-1], t_odd[0], t_odd[-1])
 if args.q == 1:
   print("Calculating kernel...")
   kernelMat = bie.calcKernelMat(t, grad_phi, curve);
-  # plot_kernel_and_show(kernelMat, t_bounds, "Kernel matrix")
   title = f"Kernel matrix, N={args.N}"
   # Plot the kernel
-  # Note that the kernel will be complex with helmholtz
+  # Note that the kernel will be complex for the interior helmholtz problem
   fig, ax = plt.subplots(1, 2 if np.iscomplexobj(kernelMat) else 1, squeeze = False)
   ax = ax[0]
   ax[0].set_title(title + ("(real)" if np.iscomplexobj(kernelMat) else ""))
